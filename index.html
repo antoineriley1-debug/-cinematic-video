@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Princess Quest">
+<meta name="theme-color" content="#ff69b4">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>Princess Kingdom Quest</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- Title screen -->
+<div id="title" class="screen">
+  <div class="title-card">
+    <div class="title-crown">👑</div>
+    <h1>Princess Kingdom<br><span>Quest</span></h1>
+    <p class="subtitle">100 magical levels · learn · explore · shine</p>
+    <div id="title-tier" class="title-tier"></div>
+    <button id="btn-play" class="big-btn pink">▶ Play</button>
+    <div class="title-row">
+      <button id="btn-levels" class="mid-btn">🗺️ Levels</button>
+      <button id="btn-store-title" class="mid-btn">🛍️ Rewards</button>
+      <button id="btn-parent-title" class="mid-btn">🔒 Parents</button>
+    </div>
+    <p class="hint">Tip: on iPad, tap Share → “Add to Home Screen” to play full screen.</p>
+  </div>
+</div>
+
+<!-- In-game HUD -->
+<div id="hud" class="hidden">
+  <div id="topbar">
+    <div class="pill" id="hud-level"></div>
+    <div class="pill" id="hud-tier"></div>
+    <div class="spacer"></div>
+    <div class="pill coins" id="hud-coins">🪙 0</div>
+    <button class="icon-btn" id="btn-store" aria-label="Reward store">🛍️</button>
+    <button class="icon-btn" id="btn-menu" aria-label="Menu">⏸️</button>
+  </div>
+  <div id="objectives"></div>
+  <canvas id="minimap" width="150" height="150"></canvas>
+  <div id="toasts"></div>
+  <div id="joystick"><div id="stick"></div></div>
+  <button id="btn-jump" aria-label="Jump">⬆️<small>JUMP</small></button>
+  <button id="btn-action" class="hidden"></button>
+</div>
+
+<!-- Generic modal -->
+<div id="modal" class="hidden"><div id="modal-box"></div></div>
+
+<script src="vendor/three.min.js"></script>
+<script src="js/data.js"></script>
+<script src="js/save.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/minigames.js"></script>
+<script src="js/world.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>

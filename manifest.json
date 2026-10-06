@@ -1,0 +1,10 @@
+{
+  "name": "Princess Kingdom Quest",
+  "short_name": "Princess Quest",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#ffd6ea",
+  "theme_color": "#ff69b4",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
