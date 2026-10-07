@@ -371,6 +371,7 @@ Object.assign(UI, {
   // Called whenever the room changes.
   netChanged() {
     const c = Net.connected;
+    this.renderFriendsBar();
     $('btn-chat').classList.toggle('hidden', !c);
     $('chat-log').classList.toggle('hidden', !c);
     $('online-dot').classList.toggle('hidden', !c);
@@ -397,6 +398,20 @@ Object.assign(UI, {
       $('chat-send').onclick = send;
       $('chat-in').onkeydown = (e) => { if (e.key === 'Enter') send(); e.stopPropagation(); };
     }
+  },
+
+  // Always-visible list of real friends: where they are, and a button to go to them.
+  renderFriendsBar() {
+    const bar = $('friends-bar'), pls = [...Net.players.values()];
+    if (!Net.connected || !pls.length) { bar.classList.add('hidden'); return; }
+    const mine = Game.running ? Game.level : 0;
+    bar.innerHTML = pls.map(pl => {
+      const here = pl.p && pl.p === mine;
+      const where = here ? '📍 Here' : pl.p ? `Level ${pl.p}` : 'Menu';
+      return `<div class="fb-row"><span class="fb-name">⭐ ${esc(pl.name)}</span><span class="fb-where">${where}</span>${pl.p ? `<button class="fb-go" data-fb="${esc(pl.id)}">${here ? 'Find' : 'Go'}</button>` : ''}</div>`;
+    }).join('');
+    bar.classList.remove('hidden');
+    bar.querySelectorAll('[data-fb]').forEach(b => b.onclick = () => { Sound.tap(); Game.goToFriend(b.dataset.fb); });
   },
 
   renderChatLog() {

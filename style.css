@@ -230,3 +230,10 @@ h1 span { color: #b05cff; font-size: 52px; }
 .look-btn small { font-size: 12px; color: #b8860b; }
 .look-btn .dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.3); display: inline-block; }
 @media (max-width: 700px) { .boutique { flex-direction: column; align-items: center; } .mirror { position: static; } }
+
+#friends-bar { position: absolute; top: calc(env(safe-area-inset-top) + 202px); right: 10px; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+.fb-row { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,.92); border: 3px solid #00b8d4; border-radius: 18px; padding: 4px 6px 4px 12px; box-shadow: 0 3px 10px rgba(0,0,0,.15); }
+.fb-name { font-weight: 800; color: #0088a8; }
+.fb-where { font-size: 14px; font-weight: 700; color: #7a3b63; }
+.fb-go { background: linear-gradient(#4fd8ef, #00a3c4); color: #fff; font-weight: 800; font-size: 16px; padding: 8px 14px; border-radius: 14px; }
+@media (max-width: 700px) { #friends-bar { top: calc(env(safe-area-inset-top) + 166px); } }

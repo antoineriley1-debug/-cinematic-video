@@ -153,6 +153,7 @@ const Game = {
     this.buildLevel(level);
     this.running = true;
     UI.setLevelHud(level);
+    UI.netChanged();
     this.updateObjectives();
     const th = themeFor(level), tr = tierFor(level), cfg = this.W.cfg;
     UI.open(`<h2>Level ${level}</h2><div class="result-big">${tr.icon}</div>
@@ -732,7 +733,8 @@ const Game = {
   },
   makeRemoteMesh(pl) {
     const m = makePrincess(this.lookOpts(pl.look));
-    const label = makeLabel('⭐ ' + pl.name, { height: 0.55, color: '#0088a8' }); label.position.y = 2.8; m.add(label);
+    // name tag shows through walls so friends can find each other
+    const label = makeLabel('⭐ ' + pl.name, { height: 0.7, color: '#0088a8', depthTest: false }); label.position.y = 2.9; label.renderOrder = 10; m.add(label);
     return m;
   },
   remoteLookChanged(id) {
@@ -755,7 +757,11 @@ const Game = {
     if (!pl.p) { UI.toast(`${pl.name} is on the title screen`); return; }
     if (!this.running || this.level !== pl.p) { UI.close(); this.startLevel(pl.p); UI.close(); }
     else UI.close();
-    this.player.pos.set(pl.x + 1.5, pl.y, pl.z + 1.5);
+    const spot = [[1.5, 1.5], [-1.5, 0], [0, -1.5], [1.5, -1.5], [0, 0]].find(([dx, dz]) => !this.blocked(pl.x + dx, pl.z + dz, pl.y)) || [0, 0];
+    this.player.pos.set(pl.x + spot[0], pl.y, pl.z + spot[1]);
+    this.player.vy = 0;
+    this.input.yaw = Math.atan2(spot[0], spot[1]);         // camera looks toward her
+    UI.toast(`📍 You found ${pl.name}!`);
   },
 
   // ---------- minimap ----------

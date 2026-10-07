@@ -157,7 +157,12 @@ const Net = {
     const st = { p: Math.max(0, Math.min(TOTAL_LEVELS, Math.round(numOr(d.p, 0)))), x: numOr(d.x, 0), y: numOr(d.y, 0), z: numOr(d.z, 0), f: numOr(d.f, 0), m: d.m ? 1 : 0 };
     const placeChanged = pl.p !== st.p;
     Object.assign(pl, st);
-    if (placeChanged) this.changed();
+    if (placeChanged) {
+      this.changed();
+      const mine = Game.running ? Game.level : 0;
+      if (st.p && st.p !== mine) UI.toast(`⭐ ${pl.name} is on Level ${st.p} - tap Go to join!`);
+      else if (st.p && st.p === mine) UI.toast(`⭐ ${pl.name} is here with you! 📍`);
+    }
     return st;
   },
 
