@@ -48,23 +48,67 @@ const DRESS = [0xff69b4, 0xb388ff, 0x7ad7f0, 0xffb347, 0x9be59b, 0xff6b6b, 0xfff
 function makePrincess(o = {}) {
   const g = new THREE.Group();
   const dress = mat(o.dress || 0xff69b4), skin = mat(o.skin || SKIN[0]), hair = mat(o.hair || HAIR[0]);
-  const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.62, 1.15, 14), dress); skirt.position.y = 0.6; g.add(skirt);
+  const outfit = o.outfit || 'gown';
+  let skirt;
+  if (outfit === 'gown' || outfit === 'royal') {
+    const big = outfit === 'royal';
+    skirt = new THREE.Mesh(new THREE.ConeGeometry(big ? 0.85 : 0.62, 1.15, 16), dress); skirt.position.y = 0.6; g.add(skirt);
+    if (big) {
+      const layer = new THREE.Mesh(new THREE.ConeGeometry(0.62, 0.7, 16), mat(0xffffff)); layer.position.y = 0.85; g.add(layer);
+      const sash = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.05, 6, 16), mat(0xffd700)); sash.rotation.x = Math.PI / 2; sash.position.y = 1.05; g.add(sash);
+    }
+  } else {
+    // tutu and adventure pants show legs
+    const legM = outfit === 'pants' ? dress : skin;
+    [-0.15, 0.15].forEach(x => { const l = new THREE.Mesh(new THREE.CylinderGeometry(outfit === 'pants' ? 0.13 : 0.09, 0.1, 0.9, 8), legM); l.position.set(x, 0.48, 0); g.add(l); });
+    if (outfit === 'tutu') { skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.68, 0.32, 18), dress); skirt.position.y = 0.92; g.add(skirt); }
+    else { skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.3, 0.3, 12), dress); skirt.position.y = 0.95; g.add(skirt); }
+  }
   const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.5, 10), dress); torso.position.y = 1.25; g.add(torso);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.34, 16, 12), skin); head.position.y = 1.75; g.add(head);
   const hairCap = new THREE.Mesh(new THREE.SphereGeometry(0.37, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.6), hair);
   hairCap.position.set(0, 1.8, -0.03); g.add(hairCap);
-  const pony = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.55, 4, 8), hair); pony.position.set(0, 1.45, -0.3); pony.rotation.x = 0.25; g.add(pony);
-  const eyeM = mat(0x2d1b2e);
-  [-0.12, 0.12].forEach(x => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), eyeM); e.position.set(x, 1.78, 0.3); g.add(e); });
-  const cheek = mat(0xff9ec4);
-  [-0.2, 0.2].forEach(x => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), cheek); e.position.set(x, 1.68, 0.27); g.add(e); });
+  const style = o.hairStyle || 'pony';
+  const addHair = (geo, x, y, z, rx = 0) => { const m = new THREE.Mesh(geo, hair); m.position.set(x, y, z); m.rotation.x = rx; g.add(m); return m; };
+  if (style === 'pony') addHair(new THREE.CapsuleGeometry(0.16, 0.55, 4, 8), 0, 1.45, -0.3, 0.25);
+  else if (style === 'long') { const m = addHair(new THREE.CapsuleGeometry(0.3, 0.7, 4, 10), 0, 1.4, -0.22); m.scale.z = 0.5; }
+  else if (style === 'buns') { addHair(new THREE.SphereGeometry(0.17, 10, 8), -0.27, 2.03, -0.05); addHair(new THREE.SphereGeometry(0.17, 10, 8), 0.27, 2.03, -0.05); }
+  else if (style === 'braids') { [-1, 1].forEach(s => { const b = addHair(new THREE.CapsuleGeometry(0.09, 0.6, 4, 6), 0.3 * s, 1.35, -0.05); b.rotation.z = -0.12 * s; }); }
+  else if (style === 'curly') { for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; addHair(new THREE.SphereGeometry(0.15, 8, 6), Math.cos(a) * 0.36, 1.75 + Math.sin(i * 1.7) * 0.12, Math.sin(a) * 0.36 - (Math.sin(a) > 0.6 ? 0.12 : 0)); } }
+  else if (style === 'bob') { const m = addHair(new THREE.SphereGeometry(0.4, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.72), 0, 1.78, -0.06); m.scale.set(1, 1, 0.95); }
+  // sneakers peeking out from under the dress
+  if (o.shoes) {
+    const sh = o.shoes;
+    [-0.2, 0.2].forEach(x => {
+      const gz = outfit === 'gown' ? 0.42 : outfit === 'royal' ? 0.6 : 0.1, sx = outfit === 'gown' || outfit === 'royal' ? x : x * 0.75;
+      const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.42), mat(sh.base)); shoe.position.set(sx, 0.1, gz); g.add(shoe);
+      const sole = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.05, 0.44), mat(sh.sole)); sole.position.set(sx, 0.03, gz); g.add(sole);
+      const lace = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.03, 0.18), mat(sh.laces)); lace.position.set(sx, 0.18, gz + 0.08); g.add(lace);
+    });
+  }
+  addFace(g, o, skin);
   const arms = [];
   [-0.34, 0.34].forEach(x => {
     const pivot = new THREE.Group(); pivot.position.set(x, 1.42, 0);
     const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.45, 4, 6), skin); arm.position.y = -0.27; pivot.add(arm);
     g.add(pivot); arms.push(pivot);
   });
-  if (o.crown !== false) {
+  const hat = o.crown === false ? 'none' : (o.headwear || 'crown');
+  if (hat === 'tiara') {
+    const t = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.03, 6, 20, Math.PI), mat(0xe0e8ff, { emissive: 0x222233 }));
+    t.position.set(0, 2.0, 0.08); t.rotation.x = -0.35; g.add(t);
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.07), mat(0x8ee8ff, { emissive: 0x114455 })); gem.position.set(0, 2.25, 0.03); g.add(gem);
+  } else if (hat === 'bow') {
+    const bm = mat(0xff2e93);
+    [-1, 1].forEach(sd => { const w = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.26, 8), bm); w.rotation.z = sd * Math.PI / 2; w.position.set(sd * 0.13, 2.12, -0.02); g.add(w); });
+    const knot = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), bm); knot.position.set(0, 2.12, -0.02); g.add(knot);
+  } else if (hat === 'flower') {
+    const fl = new THREE.Group(); fl.position.set(0.24, 2.0, 0.12);
+    for (let i = 0; i < 5; i++) { const pt = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), mat(0xff9ec4)); const a = i / 5 * Math.PI * 2; pt.position.set(Math.cos(a) * 0.08, Math.sin(a) * 0.08, 0); fl.add(pt); }
+    fl.add(new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), mat(0xffd700)));
+    g.add(fl);
+  }
+  if (hat === 'crown') {
     const crown = new THREE.Group(); crown.position.y = 2.08;
     const gold = mat(o.crownColor || 0xffd700, { emissive: 0x332200 });
     crown.add(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.1, 12, 1, true), gold));
@@ -78,6 +122,39 @@ function makePrincess(o = {}) {
   g.userData.arms = arms;
   g.userData.skirt = skirt;
   return g;
+}
+
+// Eyes, nose, mouth and cheeks, chosen in the Boutique.
+function addFace(g, o, skinMat) {
+  const eyeM = mat(o.eyeColor != null ? o.eyeColor : 0x2d1b2e), white = mat(0xffffff);
+  const eyes = o.eyes || 'round';
+  [-0.12, 0.12].forEach(x => {
+    const e = new THREE.Mesh(new THREE.SphereGeometry(eyes === 'sparkle' || eyes === 'starry' ? 0.06 : 0.05, 10, 8), eyeM);
+    e.position.set(x, 1.78, 0.3); if (eyes === 'happy') e.scale.set(1.1, 0.35, 0.6); g.add(e);
+    if (eyes === 'sparkle') { const h = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 4), white); h.position.set(x + 0.02, 1.8, 0.355); g.add(h); }
+    if (eyes === 'starry') { const h = new THREE.Mesh(new THREE.OctahedronGeometry(0.028), white); h.position.set(x + 0.015, 1.795, 0.36); g.add(h); }
+    if (eyes === 'lashes') [-0.035, 0, 0.035].forEach(dx => { const l = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.05, 0.012), mat(0x1a1a1a)); l.position.set(x + dx * 1.2, 1.84, 0.31); l.rotation.z = -dx * 8 * Math.sign(x); g.add(l); });
+  });
+  const skinCol = new THREE.Color(o.skin || 0xffe0bd).multiplyScalar(0.85).getHex();
+  const nose = o.nose || 'button';
+  if (nose === 'button') { const n = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), mat(skinCol)); n.position.set(0, 1.71, 0.34); g.add(n); }
+  else if (nose === 'small') { const n = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.07, 6), mat(skinCol)); n.rotation.x = Math.PI / 2; n.position.set(0, 1.71, 0.35); g.add(n); }
+  else if (nose === 'dot') { const n = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 4), mat(0xff8fb0)); n.position.set(0, 1.71, 0.34); g.add(n); }
+  else if (nose === 'round') { const n = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), mat(skinCol)); n.position.set(0, 1.7, 0.32); g.add(n); }
+  const lip = mat(0xc2185b), mouth = o.mouth || 'smile';
+  const arc = (r, rz, x = 0) => { const m = new THREE.Mesh(new THREE.TorusGeometry(r, 0.016, 6, 14, Math.PI), lip); m.rotation.z = rz; m.position.set(x, 1.66, 0.315); g.add(m); return m; };
+  if (mouth === 'smile') arc(0.065, Math.PI);
+  else if (mouth === 'grin') { arc(0.1, Math.PI); const t = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.025, 0.01), white); t.position.set(0, 1.645, 0.325); g.add(t); }
+  else if (mouth === 'open') { const m = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), mat(0x8a1040)); m.scale.set(1, 1.3, 0.4); m.position.set(0, 1.62, 0.31); g.add(m); }
+  else if (mouth === 'tongue') { arc(0.07, Math.PI); const t = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), mat(0xff6b9d)); t.scale.set(1, 1.2, 0.5); t.position.set(0.02, 1.6, 0.32); g.add(t); }
+  else if (mouth === 'smirk') arc(0.06, Math.PI + 0.45, 0.03);
+  const cheeks = o.cheeks || 'blush';
+  [-1, 1].forEach(sd => {
+    if (cheeks === 'blush') { const c = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), mat(0xff9ec4)); c.position.set(0.2 * sd, 1.68, 0.27); g.add(c); }
+    else if (cheeks === 'freckles') [[0, 0], [0.04, 0.03], [0.05, -0.02]].forEach(([dx, dy]) => { const f = new THREE.Mesh(new THREE.SphereGeometry(0.012, 5, 4), mat(0x9c6b4e)); f.position.set((0.18 + dx) * sd, 1.7 + dy, 0.285); g.add(f); });
+    else if (cheeks === 'hearts') { const h = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), mat(0xff2e93)); h.scale.set(1, 0.8, 0.4); h.position.set(0.2 * sd, 1.68, 0.28); g.add(h); }
+    else if (cheeks === 'stars') { const st = new THREE.Mesh(new THREE.OctahedronGeometry(0.035), mat(0xffd700, { emissive: 0x332200 })); st.position.set(0.2 * sd, 1.69, 0.28); g.add(st); }
+  });
 }
 
 function makeKnight(o = {}) {
@@ -180,6 +257,33 @@ function makeTree(type, th, rand) {
   return g;
 }
 
+function makeShopDecor(key) {
+  const g = new THREE.Group();
+  if (key === 'icecream') {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.8, 2, 12), mat(0xe0a060)); cone.rotation.x = Math.PI; cone.position.y = 1; g.add(cone);
+    [0xff9ec4, 0xfff3e0, 0x8b5a2b].forEach((c, i) => { const s = new THREE.Mesh(new THREE.SphereGeometry(0.85, 14, 10), mat(c)); s.position.y = 2.2 + i * 0.95; g.add(s); });
+    const ch = new THREE.Mesh(new THREE.SphereGeometry(0.25, 10, 8), mat(0xe8303a)); ch.position.y = 5.1; g.add(ch);
+  } else if (key === 'candy') {
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.5, 8), mat(0xffffff)); stick.position.y = 1.25; g.add(stick);
+    const pop = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.35, 24), mat(0xff5fa8)); pop.rotation.x = Math.PI / 2; pop.position.y = 3.4; g.add(pop);
+    const sw = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.15, 6, 24), mat(0xfff07a)); sw.position.set(0, 3.4, 0.2); g.add(sw);
+  } else if (key === 'sneakers') {
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1, 2.8), mat(0xff69b4)); body.position.y = 0.8; g.add(body);
+    const ankle = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1, 1.2), mat(0xff69b4)); ankle.position.set(0, 1.6, -0.8); g.add(ankle);
+    const sole = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.35, 3), mat(0xffffff)); sole.position.y = 0.2; g.add(sole);
+    const lace = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.1, 1.2), mat(0xffffff)); lace.position.set(0, 1.35, 0.3); g.add(lace);
+  } else if (key === 'salon') {
+    const dryer = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 1.6, 14), mat(0xff69b4)); dryer.rotation.z = Math.PI / 2; dryer.position.y = 2.6; g.add(dryer);
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.8, 10), mat(0xb388ff)); handle.position.set(-0.3, 1.2, 0); g.add(handle);
+    const bow = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.18, 8, 16), mat(0xfff07a)); bow.position.set(0.9, 2.6, 0); bow.rotation.y = Math.PI / 2; g.add(bow);
+  } else if (key === 'spa') {
+    const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1, 1.8, 16), mat(0xff1f8f)); bottle.position.y = 0.9; g.add(bottle);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.6, 12), mat(0x2a2a2a)); cap.position.y = 2.6; g.add(cap);
+    const shine = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1, 0.05), mat(0xffffff)); shine.position.set(0.45, 1, 0.92); g.add(shine);
+  }
+  return g;
+}
+
 function makeGem(color) {
   const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.42), new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: 0.35 }));
   return m;
@@ -236,6 +340,32 @@ const World = {
     W.spawn = { x: 0, z: S - 10 };
     occupy(W.spawn.x, W.spawn.z, 6);
     const spawnPad = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.3, 0.2, 24), mat(th.trim)); spawnPad.position.set(W.spawn.x, 0.1, W.spawn.z); root.add(spawnPad);
+
+    // ---------- Princess Town: shop street beside the spawn ----------
+    W.shops = [];
+    const shopSpots = [[-13, -8], [13, -10], [-25, -17], [25, -20], [-13, -27]];
+    SHOP_KEYS.forEach((key, i) => {
+      const sp = SHOPS[key];
+      const x = shopSpots[i][0], z = W.spawn.z + shopSpots[i][1];
+      const face = x < 0 ? 1 : -1;                 // door faces the pink path in the middle
+      occupy(x, z, 7);
+      const bw = 7, bd = 6, bh = 4.5;
+      addBox(x, 0, z, bd, bh, bw, mat(sp.color));
+      // striped awning roof
+      for (let k = 0; k < 5; k++) {
+        const st = new THREE.Mesh(new THREE.BoxGeometry(bd + 1, 0.5, (bw + 1) / 5), mat(k % 2 ? 0xffffff : sp.roof));
+        st.position.set(x, bh + 0.25, z - (bw + 1) / 2 + (k + 0.5) * (bw + 1) / 5); root.add(st);
+      }
+      const awn = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.15, bw), mat(sp.roof)); awn.position.set(x + face * (bd / 2 + 0.6), 3.4, z); awn.rotation.z = face * 0.35; root.add(awn);
+      // door + window
+      const door = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.6, 1.8), mat(0xffffff)); door.position.set(x + face * (bd / 2 + 0.05), 1.3, z); root.add(door);
+      const win = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.2, 1.6), mat(0xbfe9ff)); win.position.set(x + face * (bd / 2 + 0.05), 2, z + 2.3); root.add(win);
+      const mat2 = new THREE.Mesh(new THREE.CircleGeometry(1.3, 24), mat(0xffd700)); mat2.rotation.x = -Math.PI / 2; mat2.position.set(x + face * (bd / 2 + 1.6), 0.04, z); root.add(mat2);
+      // giant decoration on the roof
+      const deco = makeShopDecor(key); deco.position.set(x, bh + 0.5, z); root.add(deco);
+      const label = makeLabel(`${sp.icon} ${sp.name}`, { height: 0.95 }); label.position.set(x, bh + 4.2, z); root.add(label);
+      W.shops.push({ key, x: x + face * (bd / 2 + 1.6), z, deco });
+    });
 
     // ---------- Castle with door ----------
     const cx = 0, cz = -S + 16, half = 8, wallH = 6, t = 1;

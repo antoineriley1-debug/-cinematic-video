@@ -19,7 +19,16 @@ Keyboard also works: WASD/arrows, Space to jump, E to interact.
 - Questions can be **read out loud**, and wrong answers get growth-mindset encouragement.
 - **Parent reward store** (🔒 PIN): set each reward's name, emoji and coin price, see what was redeemed and mark it given, view progress by subject, change how fast coins are earned, give bonus coins, unlock levels.
 
+- **Princess Town** in every kingdom: 🍦 Ice Cream Shop, 🍭 Candy Shop, 👟 Sneaker Studio, 💇‍♀️ Hair Salon and 💅 Nail & Pedi Spa.
+  Each shop has a learning **shift** (follow orders, count, make change, sort sizes, mix colors, paint nail patterns), a **treat myself** mode, and a **delivery mission**.
+- **Make friends:** ask any princess or knight to **join your team** (up to 2). Teammates follow her into every level and earn team bonuses on missions.
+- **👗 Boutique mirror:** change skin tone, eyes, eye color, nose, mouth, cheeks, hair, outfit (gown, tutu, adventure pants, royal ball gown) and crown/tiara/bow/flower. Basics are free. Other looks are **earned with game coins** (a parent can make them all free).
+- **👭 Play with real friends (off until a parent turns it on):** one player taps *Make a room* and shares the 5-letter code, and friends on other iPads type it in to join (up to 6). Everyone sees each other in the kingdom and can chat. Chat is **safe phrases + emoji** by default. Parents can allow typing, which hides bad words, numbers, links and emails. There are no public lobbies, so only people with the code can join.
+
 Progress is saved on the device (browser local storage).
 
+### Online play notes
+Multiplayer connects iPads directly to each other (WebRTC) using the free PeerJS matchmaking service, so there is no server to set up. Most home Wi-Fi works. A few strict school or office networks block it, and then the game says it couldn't connect.
+
 ## Files
-`index.html`, `style.css`, `js/` (data, save, audio, ui, minigames, world, game), `vendor/three.min.js` (three.js r160, MIT).
+`index.html`, `style.css`, `js/` (data, save, audio, ui, minigames, shops, net, world, game), `vendor/three.min.js` (three.js r160, MIT), `vendor/peerjs.min.js` (PeerJS 1.5.4, MIT).

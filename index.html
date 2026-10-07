@@ -28,6 +28,8 @@
     <div class="title-row">
       <button id="btn-levels" class="mid-btn">🗺️ Levels</button>
       <button id="btn-store-title" class="mid-btn">🛍️ Rewards</button>
+      <button id="btn-dress-title" class="mid-btn">👗 Dress Up</button>
+      <button id="btn-friends-title" class="mid-btn">👭 Friends</button>
       <button id="btn-parent-title" class="mid-btn">🔒 Parents</button>
     </div>
     <p class="hint">Tip: on iPad, tap Share → “Add to Home Screen” to play full screen.</p>
@@ -41,12 +43,17 @@
     <div class="pill" id="hud-tier"></div>
     <div class="spacer"></div>
     <div class="pill coins" id="hud-coins">🪙 0</div>
+    <button class="icon-btn" id="btn-dress" aria-label="Dress up">👗</button>
+    <button class="icon-btn" id="btn-friends" aria-label="Friends">👭<span id="online-dot" class="hidden"></span></button>
+    <button class="icon-btn hidden" id="btn-chat" aria-label="Chat">💬</button>
     <button class="icon-btn" id="btn-store" aria-label="Reward store">🛍️</button>
     <button class="icon-btn" id="btn-menu" aria-label="Menu">⏸️</button>
   </div>
   <div id="objectives"></div>
   <canvas id="minimap" width="150" height="150"></canvas>
   <div id="toasts"></div>
+  <div id="chat-log" class="hidden"></div>
+  <div id="chat-pick" class="hidden"></div>
   <div id="joystick"><div id="stick"></div></div>
   <button id="btn-jump" aria-label="Jump">⬆️<small>JUMP</small></button>
   <button id="btn-action" class="hidden"></button>
@@ -56,11 +63,14 @@
 <div id="modal" class="hidden"><div id="modal-box"></div></div>
 
 <script src="vendor/three.min.js"></script>
+<script src="vendor/peerjs.min.js"></script>
 <script src="js/data.js"></script>
 <script src="js/save.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/minigames.js"></script>
+<script src="js/shops.js"></script>
+<script src="js/net.js"></script>
 <script src="js/world.js"></script>
 <script src="js/game.js"></script>
 </body>

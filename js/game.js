@@ -24,7 +24,7 @@ const Game = {
     // Player
     this.player = {
       pos: new THREE.Vector3(), vy: 0, onGround: true, lastGround: 0, facing: 0, walk: 0,
-      mesh: makePrincess({ dress: 0xff4fa3, hair: 0x5a2d1a, skin: SKIN[0] }),
+      mesh: makePrincess(this.lookOpts(Save.data.look)),
     };
     this.player.shadow = makeShadow(0.65);
     // sparkle trail
@@ -35,10 +35,26 @@ const Game = {
     this.sparks.frustumCulled = false;
 
     this.camPos = new THREE.Vector3();
+    this.remotes = new Map();
+    this.shopCooldown = new Set();
     this.loop = this.loop.bind(this);
     requestAnimationFrame(this.loop);
     // Attract-mode world behind the title screen
     this.buildLevel(Save.data.current || 1, true);
+  },
+
+  lookOpts(l) {
+    return { dress: l.dress, hair: l.hair, skin: l.skin, hairStyle: l.hairStyle, shoes: l.shoes,
+      eyes: l.eyes, eyeColor: l.eyeColor, nose: l.nose, mouth: l.mouth, cheeks: l.cheeks, outfit: l.outfit, headwear: l.headwear };
+  },
+
+  // Rebuild her avatar after a salon / sneaker change.
+  refreshLook() {
+    const P = this.player, old = P.mesh, parent = old.parent;
+    P.mesh = makePrincess(this.lookOpts(Save.data.look));
+    P.mesh.position.copy(old.position); P.mesh.rotation.copy(old.rotation);
+    if (parent) { parent.remove(old); parent.add(P.mesh); }
+    Net.sendLook();
   },
 
   resize() {
@@ -102,7 +118,11 @@ const Game = {
 
   // ---------- level lifecycle ----------
   buildLevel(level, attract = false) {
-    if (this.W) { this.W.root.remove(this.player.mesh, this.player.shadow, this.sparks); World.dispose(this.scene, this.W); }
+    if (this.W) {
+      this.W.root.remove(this.player.mesh, this.player.shadow, this.sparks);
+      for (const r of this.remotes.values()) this.W.root.remove(r.mesh, r.shadow);
+      World.dispose(this.scene, this.W);
+    }
     this.level = level;
     this.W = World.build(this.scene, level);
     const W = this.W;
@@ -157,17 +177,22 @@ const Game = {
     const W = this.W, cfg = W.cfg;
     const rand = mulberry32(this.level * 31 + 5);
     this.npcs = [];
-    const names = shuffle(NPC_NAMES);
+    const team = (Save.data.team || []).slice(0, 2);
+    const names = shuffle(NPC_NAMES.filter(nm => !team.includes(nm)));
+    // teammates come along to every level: they take the slots right after the quest friends
+    names.splice(cfg.friends, 0, ...team);
     const total = cfg.npcs + cfg.friends;
     for (let i = 0; i < total; i++) {
       const isFriend = i < cfg.friends;
       const name = names[i % names.length];
       const knight = /^(Sir|Knight|Prince)/.test(name);
-      const look = { dress: DRESS[(i * 3 + this.level) % DRESS.length], hair: HAIR[(i * 5 + this.level) % HAIR.length], skin: SKIN[(i * 7 + this.level) % SKIN.length], crown: !knight };
+      const look = { dress: DRESS[(i * 3 + this.level) % DRESS.length], hair: HAIR[(i * 5 + this.level) % HAIR.length], skin: SKIN[(i * 7 + this.level) % SKIN.length], crown: !knight, hairStyle: HAIR_STYLES[(i * 2 + this.level) % HAIR_STYLES.length][0] };
       const mesh = knight ? makeKnight(look) : makePrincess(look);
       const sh = makeShadow(0.6);
       let x, z;
+      const follow = !isFriend && team.includes(name);
       if (isFriend) ({ x, z } = W.friendSpots[i]);
+      else if (follow) { x = W.spawn.x + (i % 2 ? 2 : -2); z = W.spawn.z + 2; }
       else { x = (rand() * 2 - 1) * W.S * 0.8; z = (rand() * 2 - 1) * W.S * 0.8; }
       const label = makeLabel(name, { height: 0.5, color: '#7a3b63' }); label.position.y = 2.75; mesh.add(label);
       let mark = null;
@@ -177,9 +202,65 @@ const Game = {
       }
       W.root.add(mesh); W.root.add(sh);
       const n = { i, name, mesh, shadow: sh, label, mark, friend: isFriend, x, z, y: 0, vy: 0, heading: rand() * 6.28,
-        target: null, speed: 2.2 + rand() * 1.8, wait: rand() * 2, walk: rand() * 6, hidden: 0, gifted: false };
+        target: null, speed: 2.2 + rand() * 1.8, wait: rand() * 2, walk: rand() * 6, hidden: 0, gifted: false, follow };
+      if (follow) this.setTeamMark(n, true);
       this.npcs.push(n);
     }
+    if (Save.data.mission) this.assignMissionTargets();
+  },
+
+  // ---------- team (AI friends who follow her) ----------
+  teamNames() { return (this.npcs || []).filter(n => n.follow).map(n => n.name); },
+  setTeamMark(n, on) {
+    if (n.teamMark) { n.mesh.remove(n.teamMark); n.teamMark = null; }
+    if (on) { n.teamMark = makeLabel('💕 Team', { height: 0.45, color: '#ff2e93' }); n.teamMark.position.y = 3.15; n.mesh.add(n.teamMark); }
+  },
+  setFollow(n, on) {
+    n.follow = on; n.target = null; n.hidden = 0; n.mesh.visible = n.shadow.visible = true;
+    this.setTeamMark(n, on);
+    Save.data.team = this.teamNames();
+    if (on && !Save.data.bff.includes(n.name)) Save.data.bff.push(n.name);
+    Save.write();
+  },
+
+  // ---------- delivery missions from the shops ----------
+  startMission(key) {
+    Save.data.mission = { shop: key, need: 3 + Math.min(2, Math.floor(this.level / 30)), done: 0 };
+    Save.write();
+    this.assignMissionTargets();
+    this.updateObjectives();
+  },
+  assignMissionTargets() {
+    const m = Save.data.mission; if (!m) return;
+    this.npcs.forEach(n => { if (n.missionMark) { n.mesh.remove(n.missionMark); n.missionMark = null; } n.missionTarget = false; });
+    const pool = shuffle(this.npcs.filter(n => !n.friend && !n.follow));
+    pool.slice(0, m.need - m.done).forEach(n => {
+      n.missionTarget = true;
+      n.missionMark = makeLabel(SHOPS[m.shop].item, { height: 1, bg: 'rgba(255,255,255,0)' }); n.missionMark.position.y = 3.6; n.mesh.add(n.missionMark);
+    });
+  },
+  deliver(n) {
+    const m = Save.data.mission, sp = SHOPS[m.shop];
+    n.missionTarget = false; n.mesh.remove(n.missionMark); n.missionMark = null;
+    m.done++;
+    const team = this.teamNames();
+    let coins = Save.addCoins(4 + team.length * 2, 'mission');
+    let done = '';
+    if (m.done >= m.need) {
+      coins += Save.addCoins(10 + this.level * 0.1, 'mission');
+      Save.data.mission = null;
+      done = `<p class="affirm">📜 Mission complete! ${team.length ? 'Great teamwork!' : 'You did it!'}</p>`;
+      Sound.fanfare();
+    } else Sound.right();
+    Save.write();
+    UI.open(`<h2>${sp.item} Delivery!</h2><div class="result-big">🤗</div>
+      <p class="center" style="font-size:22px"><b>${esc(n.name)}:</b> “Thank you so much! I love it!”</p>
+      ${team.length ? `<p class="center">👭 Team bonus from ${esc(team.join(' & '))}!</p>` : ''}${done}
+      <p class="center" style="font-size:20px">🪙 +${coins}${Save.data.mission ? ` · ${m.done}/${m.need} delivered` : ''}</p>
+      <div class="row-btns"><button class="big-btn pink" id="dv-ok">You're welcome!</button></div>`);
+    Voice.speak(`Thank you so much! I love it!` + (done ? ' Mission complete!' : ''));
+    $('dv-ok').onclick = () => UI.close();
+    this.updateObjectives();
   },
 
   pickNpcTarget(n) {
@@ -208,7 +289,21 @@ const Game = {
       if (n.mesh.scale.x < 1) n.mesh.scale.setScalar(Math.min(1, n.mesh.scale.x + dt * 2));
       let moving = false;
       const dp = Math.hypot(this.player.pos.x - n.x, this.player.pos.z - n.z);
-      if (n.friend) {
+      if (n.follow) {
+        // teammates trail behind her, catching up (or popping over) when she gets far away
+        const slot = this.npcs.filter(o => o.follow).indexOf(n);
+        const back = 2.2 + slot * 1.6, side = slot ? 1.2 : -1.2;
+        const tx = this.player.pos.x - Math.sin(this.player.facing) * back + Math.cos(this.player.facing) * side;
+        const tz = this.player.pos.z - Math.cos(this.player.facing) * back - Math.sin(this.player.facing) * side;
+        const dx = tx - n.x, dz = tz - n.z, d = Math.hypot(dx, dz);
+        if (d > 30) { n.x = tx; n.z = tz; n.y = this.player.pos.y; }
+        else if (d > 0.6) {
+          n.heading = Math.atan2(dx, dz);
+          const sp = Math.min(9, Math.max(3, d * 2)) * dt;
+          n.x += dx / d * Math.min(sp, d); n.z += dz / d * Math.min(sp, d); moving = true;
+        } else n.heading = this.player.facing;
+        if (!this.player.onGround && this.player.vy > 5 && n.vy === 0) n.vy = 9;
+      } else if (n.friend) {
         // friends wait in place and face the player when near
         if (dp < 8) n.heading = Math.atan2(this.player.pos.x - n.x, this.player.pos.z - n.z);
       } else if (n.wait > 0) {
@@ -231,7 +326,7 @@ const Game = {
         }
       }
       // simple vertical: hop and settle on top of whatever is below
-      const gh = this.groundAt(n.x, n.z, n.y + 1, 0.3);
+      const gh = this.groundAt(n.x, n.z, n.y + (n.follow ? 2.3 : 1), 0.3);
       n.vy -= 28 * dt; n.y += n.vy * dt;
       if (n.y < gh) { n.y = gh; n.vy = 0; }
       n.walk += moving ? dt * 10 : 0;
@@ -325,7 +420,14 @@ const Game = {
 
   updateCamera(dt) {
     const P = this.player, I = this.input;
-    const dist = 10, h = Math.sin(I.pitch) * dist, flat = Math.cos(I.pitch) * dist;
+    // pull the camera in when a wall or building is between it and her
+    let dist = 10;
+    const sx = Math.sin(I.yaw) * Math.cos(I.pitch), sy = Math.sin(I.pitch), sz = Math.cos(I.yaw) * Math.cos(I.pitch);
+    for (let d = 1.5; d <= 10; d += 0.5) {
+      const x = P.pos.x + sx * d, y = P.pos.y + 1.5 + sy * d, z = P.pos.z + sz * d;
+      if (this.W.colliders.some(c => x > c.x1 - 0.3 && x < c.x2 + 0.3 && z > c.z1 - 0.3 && z < c.z2 + 0.3 && y > c.y1 - 0.3 && y < c.y2 + 0.3)) { dist = Math.max(1.5, d - 0.6); break; }
+    }
+    const h = Math.sin(I.pitch) * dist, flat = Math.cos(I.pitch) * dist;
     const tx = P.pos.x + Math.sin(I.yaw) * flat, ty = P.pos.y + 1.5 + h, tz = P.pos.z + Math.cos(I.yaw) * flat;
     const a = 1 - Math.exp(-dt * 10);
     this.camPos.x += (tx - this.camPos.x) * a; this.camPos.y += (ty - this.camPos.y) * a; this.camPos.z += (tz - this.camPos.z) * a;
@@ -393,6 +495,10 @@ const Game = {
       row('💬', 'Help friends', s.friends.length, c.friends) +
       row('👑', 'Tower crown', s.crown ? 1 : 0, 1);
     if (this.allDone()) html += '<div class="go">🏰 Go to the castle!</div>';
+    const m = Save.data.mission;
+    if (m) html += `<div class="row" style="color:#8f4dff"><span>📜 Deliver ${SHOPS[m.shop].item}</span><span>${m.done}/${m.need}</span></div>`;
+    const team = this.teamNames();
+    if (team.length) html += `<div class="row muted"><span>👭 ${esc(team.join(', '))}</span></div>`;
     $('objectives').innerHTML = html;
   },
 
@@ -408,6 +514,10 @@ const Game = {
       if (n.hidden > 0) continue;
       const d = Math.hypot(P.pos.x - n.x, P.pos.z - n.z);
       if (d < 3 && d < bd + (n.friend ? 1.5 : 0)) { best = { type: 'npc', n }; bd = d; }
+    }
+    for (const sh of W.shops) {
+      const d = Math.hypot(P.pos.x - sh.x, P.pos.z - sh.z);
+      if (d < 2.6 && d < bd + 1) { best = { type: 'shop', sh }; bd = d; }
     }
     const lp = W.levelPortal;
     if (this.doorOpened && Math.hypot(P.pos.x - lp.x, P.pos.z - lp.z) < 3) best = { type: 'level' };
@@ -425,7 +535,10 @@ const Game = {
       btn.textContent = `${g.icon} ${done ? 'Play again' : 'Play ' + g.name}`;
     } else if (nb.type === 'npc') {
       const n = nb.n;
-      btn.textContent = n.friend && !this.state.friends.includes(n.i) ? `❗ Help ${n.name}` : `💬 Talk to ${n.name}`;
+      btn.textContent = n.friend && !this.state.friends.includes(n.i) ? `❗ Help ${n.name}`
+        : n.missionTarget ? `${SHOPS[Save.data.mission.shop].item} Give to ${n.name}` : `💬 Talk to ${n.name}`;
+    } else if (nb.type === 'shop') {
+      btn.textContent = `${SHOPS[nb.sh.key].icon} Enter ${SHOPS[nb.sh.key].name}`;
     } else btn.textContent = '✨ Next Level!';
   },
 
@@ -434,7 +547,15 @@ const Game = {
     const nb = this.nearby;
     if (nb.type === 'portal') this.enterPortal(nb.p);
     else if (nb.type === 'npc') this.talkTo(nb.n);
+    else if (nb.type === 'shop') this.enterShop(nb.sh);
     else if (nb.type === 'level') this.completeLevel();
+  },
+
+  enterShop(sh) {
+    this.shopCooldown.add(sh.key);
+    this.input.jx = this.input.jy = 0;
+    Sound.door();
+    Shops.open(sh.key);
   },
 
   // Walking right through a portal's ring also enters it.
@@ -444,6 +565,11 @@ const Game = {
       const d = Math.hypot(P.pos.x - p.x, P.pos.z - p.z);
       if (d > 4.5) this.portalCooldown.delete(p.index);
       else if (d < 1.1 && P.pos.y < 2 && !this.portalCooldown.has(p.index)) { this.portalCooldown.add(p.index); this.enterPortal(p); return; }
+    }
+    for (const sh of this.W.shops) {
+      const d = Math.hypot(P.pos.x - sh.x, P.pos.z - sh.z);
+      if (d > 3.5) this.shopCooldown.delete(sh.key);
+      else if (d < 1.0 && !this.shopCooldown.has(sh.key)) { this.enterShop(sh); return; }
     }
     const lp = this.W.levelPortal;
     if (this.doorOpened && Math.hypot(P.pos.x - lp.x, P.pos.z - lp.z) < 1.4) this.completeLevel();
@@ -477,14 +603,24 @@ const Game = {
   talkTo(n) {
     const s = this.state;
     if (n.friend && !s.friends.includes(n.i)) return this.friendQuest(n);
-    const line = pick(NPC_CHATTER);
+    if (n.missionTarget && Save.data.mission) return this.deliver(n);
+    const line = n.follow ? pick(['I love being on your team!', 'Where are we going next?', 'You are a great leader!', 'Let\'s go on a mission!', 'Best friends forever!']) : pick(NPC_CHATTER);
     let gift = '';
     if (!n.gifted && Math.random() < 0.5) { n.gifted = true; const c = Save.addCoins(3, 'gift'); gift = `<p class="center" style="font-size:20px">${esc(n.name)} gave you 🪙 ${c}!</p>`; }
     UI.open(`<h2>💬 ${esc(n.name)}</h2><div class="result-big">${/^(Sir|Knight|Prince)/.test(n.name) ? '🛡️' : '👸'}</div>
       <p class="center" style="font-size:24px">“${esc(line)}”</p>${gift}
-      <div class="row-btns"><button class="big-btn pink" id="t-ok">Bye ${esc(n.name)}! 👋</button></div>`);
+      <div class="row-btns">${n.friend ? '' : n.follow ? `<button class="big-btn gray" id="t-team">Leave team</button>`
+        : this.teamNames().length < 2 ? `<button class="big-btn purple" id="t-team">👭 Join my team!</button>` : ''}
+        <button class="big-btn pink" id="t-ok">Bye ${esc(n.name)}! 👋</button></div>
+      ${!n.friend && !n.follow && this.teamNames().length >= 2 ? '<p class="center muted">Your team is full (2 friends max).</p>' : ''}`);
     Voice.speak(line);
     $('t-ok').onclick = () => UI.close();
+    if ($('t-team')) $('t-team').onclick = () => {
+      const join = !n.follow;
+      this.setFollow(n, join);
+      if (join) { Sound.fanfare(); UI.toast(`👭 ${n.name} joined your team!`); Voice.speak(`Yay! I'll come with you, ${Save.data.nickname || 'princess'}!`); }
+      UI.close();
+    };
   },
 
   friendQuest(n) {
@@ -568,6 +704,60 @@ const Game = {
     $('lc-map').onclick = () => { this.completing = false; UI.showLevels(); };
   },
 
+  // ---------- real friends online ----------
+  updateRemotes(dt, t) {
+    const here = this.running ? this.level : -1;
+    for (const [id, r] of this.remotes) if (!Net.players.has(id)) { r.mesh.parent && r.mesh.parent.remove(r.mesh); r.shadow.parent && r.shadow.parent.remove(r.shadow); this.remotes.delete(id); }
+    for (const pl of Net.players.values()) {
+      let r = this.remotes.get(pl.id);
+      if (!r) {
+        r = { mesh: this.makeRemoteMesh(pl), shadow: makeShadow(0.6), pos: new THREE.Vector3(pl.x, pl.y, pl.z), f: pl.f, walk: 0 };
+        this.remotes.set(pl.id, r);
+      }
+      const show = pl.p === here;
+      if (!show) { if (r.mesh.parent) { r.mesh.parent.remove(r.mesh); r.shadow.parent.remove(r.shadow); } continue; }
+      if (r.mesh.parent !== this.W.root) { this.W.root.add(r.mesh); this.W.root.add(r.shadow); r.pos.set(pl.x, pl.y, pl.z); }
+      const a = 1 - Math.exp(-dt * 12);
+      r.pos.x += (pl.x - r.pos.x) * a; r.pos.y += (pl.y - r.pos.y) * a; r.pos.z += (pl.z - r.pos.z) * a;
+      let df = pl.f - r.f; while (df > Math.PI) df -= 6.283; while (df < -Math.PI) df += 6.283; r.f += df * a;
+      r.walk += pl.m ? dt * 12 : 0;
+      r.mesh.position.set(r.pos.x, r.pos.y + (pl.m ? Math.abs(Math.sin(r.walk)) * 0.1 : 0), r.pos.z);
+      r.mesh.rotation.y = r.f;
+      const arms = r.mesh.userData.arms; arms[0].rotation.x = pl.m ? Math.sin(r.walk) * 0.8 : 0; arms[1].rotation.x = -arms[0].rotation.x;
+      r.shadow.position.set(r.pos.x, this.groundAt(r.pos.x, r.pos.z, r.pos.y) + 0.03, r.pos.z);
+      if (r.bubble && t > r.bubbleUntil) { r.mesh.remove(r.bubble); r.bubble = null; }
+    }
+    const P = this.player;
+    if (P.bubble && t > P.bubbleUntil) { P.mesh.remove(P.bubble); P.bubble = null; }
+  },
+  makeRemoteMesh(pl) {
+    const m = makePrincess(this.lookOpts(pl.look));
+    const label = makeLabel('⭐ ' + pl.name, { height: 0.55, color: '#0088a8' }); label.position.y = 2.8; m.add(label);
+    return m;
+  },
+  remoteLookChanged(id) {
+    const r = this.remotes.get(id), pl = Net.players.get(id); if (!r || !pl) return;
+    const parent = r.mesh.parent; if (parent) parent.remove(r.mesh);
+    r.mesh = this.makeRemoteMesh(pl); r.bubble = null;
+    if (parent) parent.add(r.mesh);
+  },
+  showChatBubble(id, text) {
+    const holder = id === 'me' ? this.player : this.remotes.get(id);
+    if (!holder) return;
+    if (holder.bubble) holder.mesh.remove(holder.bubble);
+    holder.bubble = makeLabel(text, { height: 0.6, color: '#5a2346' });
+    holder.bubble.position.y = 3.4;
+    holder.mesh.add(holder.bubble);
+    holder.bubbleUntil = this.clock.elapsedTime + 6;
+  },
+  goToFriend(id) {
+    const pl = Net.players.get(id); if (!pl) return;
+    if (!pl.p) { UI.toast(`${pl.name} is on the title screen`); return; }
+    if (!this.running || this.level !== pl.p) { UI.close(); this.startLevel(pl.p); UI.close(); }
+    else UI.close();
+    this.player.pos.set(pl.x + 1.5, pl.y, pl.z + 1.5);
+  },
+
   // ---------- minimap ----------
   drawMinimap() {
     const cv = $('minimap'), ctx = cv.getContext('2d'), W = this.W, P = this.player;
@@ -585,6 +775,9 @@ const Game = {
     dot(W.tower.x, W.tower.z, 5, this.state.crown ? '#bbb' : '#8f4dff');
     W.gems.forEach(g => { if (!g.taken) dot(g.x, g.z, 2, '#ff2e93'); });
     W.portals.forEach(p => dot(p.x, p.z, 4, this.state.keys.includes(p.index) ? '#ffd700' : '#' + new THREE.Color(GAMES[p.key].color).getHexString()));
+    W.shops.forEach(s => dot(s.x, s.z, 4, '#ffffff'));
+    this.npcs.forEach(n => { if (n.missionTarget) dot(n.x, n.z, 5, '#8f4dff'); });
+    for (const r of this.remotes.values()) if (r.mesh.parent) dot(r.pos.x, r.pos.z, 5, '#00b8d4');
     this.npcs.forEach(n => { if (n.hidden <= 0) dot(n.x, n.z, n.friend && !this.state.friends.includes(n.i) ? 4 : 2, n.friend && !this.state.friends.includes(n.i) ? '#ff9f43' : '#ffffff'); });
     // player arrow
     const [px, pz] = pt(P.pos.x, P.pos.z);
@@ -616,6 +809,13 @@ const Game = {
     }
     if (this.running) this.updateCamera(dt);
     this.updateNPCs(dt, t);
+    this.netTimer = (this.netTimer || 0) - dt;
+    if (Net.connected && this.netTimer <= 0) {
+      this.netTimer = 0.1;
+      const P = this.player;
+      Net.sendState({ p: this.running ? this.level : 0, x: +P.pos.x.toFixed(2), y: +P.pos.y.toFixed(2), z: +P.pos.z.toFixed(2), f: +P.facing.toFixed(2), m: Math.hypot(this.input.jx, this.input.jy) > 0.05 || Object.values(this.input.keys).some(Boolean) ? 1 : 0 });
+    }
+    this.updateRemotes(dt, t);
     // ambient animation
     W.portals.forEach(p => { p.disc.rotation.z = t; p.ring.rotation.z = Math.sin(t) * 0.1; });
     W.levelPortal.disc.material.opacity = this.doorOpened ? 0.6 + Math.sin(t * 4) * 0.25 : 0.25;
@@ -640,5 +840,10 @@ window.addEventListener('load', () => {
   $('btn-levels').onclick = () => { Sound.unlock(); UI.showLevels(); };
   $('btn-store-title').onclick = () => { Sound.unlock(); UI.showStore(); };
   $('btn-parent-title').onclick = () => { Sound.unlock(); UI.showParentGate(); };
+  $('btn-friends-title').onclick = () => { Sound.unlock(); UI.showFriends(); };
+  $('btn-friends').onclick = () => { Sound.tap(); UI.showFriends(); };
+  $('btn-dress').onclick = () => { Sound.tap(); Shops.boutique(); };
+  $('btn-dress-title').onclick = () => { Sound.unlock(); Shops.boutique(); };
+  $('btn-chat').onclick = () => { Sound.tap(); UI.toggleChat(); };
   document.addEventListener('visibilitychange', () => { if (document.hidden && Game.running && !UI.modalOpen) UI.showMenu(); });
 });

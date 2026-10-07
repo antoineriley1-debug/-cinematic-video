@@ -28,6 +28,16 @@ const Save = {
       purchases: [],         // {id, emoji, name, price, date, delivered}
       levelState: null,      // in-progress objectives for current level
       playerName: '',
+      nickname: '',
+      bff: [],               // AI friends she has made
+      look: {
+        hair: 0x5a2d1a, hairStyle: 'pony', dress: 0xff4fa3, skin: 0xffe0bd,
+        eyes: 'round', eyeColor: 0x4a2a1a, nose: 'button', mouth: 'smile', cheeks: 'blush', outfit: 'gown', headwear: 'crown',
+        shoes: { base: 0xffffff, laces: 0xff69b4, sole: 0xff69b4 },
+        nails: { hand: [null, null, null, null, null], foot: [null, null, null, null, null], pattern: 'solid' },
+      },
+      mission: null,         // active delivery mission
+      owned: [],             // boutique items bought, as 'slot:id'
     }, safeGet(SAVE_KEY) || {});
     this.parent = Object.assign({
       pin: '',
@@ -35,9 +45,16 @@ const Save = {
       coinMultiplier: 1,
       voice: true,
       dailyGoal: 0,
+      online: false,         // allow playing with real friends via private room codes
+      chatMode: 'safe',      // 'safe' = preset phrases + emoji only, 'typed' = filtered typing
+      looksCost: true,       // boutique looks cost coins (off = everything free)
     }, safeGet(PARENT_KEY) || {});
+    this.fixLook();
   },
   write() { safeSet(SAVE_KEY, this.data); },
+  fixLook() {
+    this.data.look = Object.assign({ eyes: 'round', eyeColor: 0x4a2a1a, nose: 'button', mouth: 'smile', cheeks: 'blush', outfit: 'gown', headwear: 'crown' }, this.data.look);
+  },
   writeParent() { safeSet(PARENT_KEY, this.parent); },
 
   addCoins(n, reason) {

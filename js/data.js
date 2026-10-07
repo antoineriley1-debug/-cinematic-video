@@ -405,3 +405,54 @@ const DEFAULT_STORE = [
   { id: 'r5', emoji: '🧸', name: 'Small toy', price: 800 },
   { id: 'r6', emoji: '👑', name: 'Princess dress-up day', price: 1200 },
 ];
+
+// ---------- Princess Town shops (one street in every kingdom) ----------
+const SHOPS = {
+  icecream: { name: 'Ice Cream Shop', icon: '🍦', color: 0xffb3d9, roof: 0x8ee8ff, item: '🍦', itemName: 'ice cream cones' },
+  candy:    { name: 'Candy Shop',     icon: '🍭', color: 0xfff07a, roof: 0xff5fa8, item: '🍬', itemName: 'candy bags' },
+  sneakers: { name: 'Sneaker Studio', icon: '👟', color: 0xb5f0ff, roof: 0xb388ff, item: '👟', itemName: 'sneaker boxes' },
+  salon:    { name: 'Hair Salon',     icon: '💇‍♀️', color: 0xe9d4ff, roof: 0xff69b4, item: '🎀', itemName: 'hair bows' },
+  spa:      { name: 'Nail & Pedi Spa', icon: '💅', color: 0xffd1e8, roof: 0xffd700, item: '💅', itemName: 'nail polish bottles' },
+};
+const SHOP_KEYS = Object.keys(SHOPS);
+const HAIR_STYLES = [['pony', 'Ponytail'], ['long', 'Long'], ['buns', 'Space buns'], ['braids', 'Braids'], ['curly', 'Curly'], ['bob', 'Bob']];
+const HAIR_COLORS = [['Brown', 0x5a2d1a], ['Black', 0x1a1a1a], ['Blonde', 0xffd36b], ['Red', 0xd2491e], ['Pink', 0xff7ab8], ['Purple', 0xa070ff], ['Blue', 0x5ab0ff], ['Green', 0x7ee0b5], ['Orange', 0xff9f43]];
+const PAINT_COLORS = [['Pink', 0xff69b4], ['Hot pink', 0xff1f8f], ['Purple', 0xa070ff], ['Red', 0xe8303a], ['Orange', 0xff9f43], ['Gold', 0xffd700], ['Mint', 0x7ee0b5], ['Blue', 0x48a8ff], ['White', 0xffffff], ['Black', 0x2a2a2a]];
+const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+const colorName = (n, list = PAINT_COLORS) => (list.find(c => c[1] === n) || ['?'])[0];
+
+// Kid-safe chat for multiplayer.
+const SAFE_PHRASES = ['Hi! 👋', 'Want to play?', 'Follow me!', 'Wait for me!', 'Let\'s go to the castle!', 'Let\'s climb the tower!',
+  'I found a gem! 💎', 'Good job! 🌟', 'You are awesome!', 'Let\'s get ice cream! 🍦', 'Let\'s do our nails! 💅', 'Race you! 🏃‍♀️',
+  'Help me please!', 'Thank you! 💖', 'Yes!', 'No thanks', 'Be right back', 'Bye! 👋'];
+const CHAT_EMOJI = ['😀', '😂', '🥰', '😮', '😢', '👍', '💖', '👑', '🦄', '🐉', '🌈', '⭐'];
+const BAD_WORDS = ['stupid', 'dumb', 'idiot', 'hate', 'shut up', 'ugly', 'loser', 'kill', 'die', 'damn', 'hell', 'crap', 'sexy', 'butt'];
+function cleanChat(text) {
+  let t = String(text || '').slice(0, 80);
+  t = t.replace(/https?:\/\/\S+|www\.\S+|\S+@\S+/gi, '***');      // links / emails
+  t = t.replace(/\d[\d\s().-]{3,}\d/g, '***');                     // phone numbers / addresses
+  for (const w of BAD_WORDS) t = t.replace(new RegExp('\\b' + w + '\\b', 'gi'), '***');
+  return t.trim();
+}
+
+// ---------- Boutique: looks she can earn (price 0 = free from the start) ----------
+// Skin tones are always free. Colors carry a numeric value; styles are ids the 3D model understands.
+const WARDROBE = {
+  skin:      { tab: 'face', label: 'Skin tone', items: [['t1', 'Light', 0, 0xffe0bd], ['t2', 'Fair', 0, 0xffdbac], ['t3', 'Tan', 0, 0xf1c27d], ['t4', 'Golden', 0, 0xe0ac69], ['t5', 'Brown', 0, 0xc68642], ['t6', 'Deep', 0, 0x8d5524]] },
+  eyes:      { tab: 'face', label: 'Eyes', items: [['round', 'Round', 0], ['sparkle', 'Sparkly', 30], ['lashes', 'Lashes', 40], ['happy', 'Happy', 30], ['starry', 'Starry', 60]] },
+  eyeColor:  { tab: 'face', label: 'Eye color', items: [['brown', 'Brown', 0, 0x4a2a1a], ['black', 'Black', 0, 0x1a1a1a], ['blue', 'Blue', 20, 0x2f7de1], ['green', 'Green', 20, 0x2e9e5b], ['purple', 'Purple', 40, 0x8a3cf0], ['pink', 'Pink', 40, 0xff3d9a]] },
+  nose:      { tab: 'face', label: 'Nose', items: [['button', 'Button', 0], ['small', 'Tiny', 0], ['dot', 'Dot', 15], ['round', 'Round', 15]] },
+  mouth:     { tab: 'face', label: 'Mouth', items: [['smile', 'Smile', 0], ['grin', 'Big grin', 20], ['open', 'Wow!', 20], ['tongue', 'Silly', 30], ['smirk', 'Sly smile', 25]] },
+  cheeks:    { tab: 'face', label: 'Cheeks', items: [['blush', 'Blush', 0], ['none', 'None', 0], ['freckles', 'Freckles', 25], ['hearts', 'Hearts', 50], ['stars', 'Stars', 50]] },
+  hairStyle: { tab: 'hair', label: 'Hair style', items: [['pony', 'Ponytail', 0], ['bob', 'Bob', 0], ['long', 'Long', 40], ['buns', 'Space buns', 50], ['braids', 'Braids', 50], ['curly', 'Curly', 50]] },
+  hair:      { tab: 'hair', label: 'Hair color', items: [['brown', 'Brown', 0, 0x5a2d1a], ['black', 'Black', 0, 0x1a1a1a], ['blonde', 'Blonde', 0, 0xffd36b], ['red', 'Red', 0, 0xd2491e], ['orange', 'Orange', 30, 0xff9f43], ['pink', 'Pink', 40, 0xff7ab8], ['purple', 'Purple', 40, 0xa070ff], ['blue', 'Blue', 50, 0x5ab0ff], ['green', 'Green', 50, 0x7ee0b5]] },
+  outfit:    { tab: 'outfit', label: 'Outfit', items: [['gown', 'Princess gown', 0], ['tutu', 'Ballet tutu', 80], ['pants', 'Adventure pants', 60], ['royal', 'Royal ball gown', 150]] },
+  dress:     { tab: 'outfit', label: 'Outfit color', items: [['pink', 'Pink', 0, 0xff4fa3], ['purple', 'Purple', 0, 0xa070ff], ['sky', 'Sky blue', 20, 0x7ad7f0], ['mint', 'Mint', 20, 0x7ee0b5], ['sunny', 'Sunny', 20, 0xfff07a], ['coral', 'Coral', 30, 0xff6b6b], ['white', 'Snow', 30, 0xffffff], ['gold', 'Gold', 100, 0xffd700]] },
+  headwear:  { tab: 'outfit', label: 'On my head', items: [['crown', 'Crown', 0], ['none', 'Nothing', 0], ['bow', 'Big bow', 30], ['flower', 'Flower', 40], ['tiara', 'Tiara', 60]] },
+};
+// Which saved look field and value each catalog slot maps to.
+function wardrobeValue(slot, item) { return item.length > 3 ? item[3] : item[0]; }
+function wardrobeCurrent(slot, look) {
+  const v = look[slot];
+  return WARDROBE[slot].items.find(it => wardrobeValue(slot, it) === v) || WARDROBE[slot].items[0];
+}

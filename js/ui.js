@@ -117,6 +117,9 @@ const UI = {
       💬 <b>Help friends</b> with a <b>!</b> over their heads.<br>
       🗼 <b>Climb the tower</b> and grab the 👑 crown on top.<br>
       🏰 When everything is done, the <b>castle door opens</b> - go through the magic portal inside to the next level!<br>
+      👗 <b>Dress up</b> in the Boutique mirror: change your face, hair and outfit. Earn coins to unlock new looks!<br>
+      🏪 <b>Shops</b> by the start: ice cream, candy, sneakers, hair salon and the nail & pedi spa!<br>
+      👭 <b>Make friends:</b> talk to anyone and ask them to join your team. Teammates follow you on missions.<br>
       🪙 <b>Coins</b> buy real rewards in the 🛍️ store that your grown-up sets up.
       </div>
       <div class="row-btns"><button class="big-btn pink" id="h-ok">Let's go!</button></div>`, { onClose: after });
@@ -284,6 +287,9 @@ const UI = {
         ${[[0.5, 'Slower (½×)'], [1, 'Normal (1×)'], [1.5, 'Faster (1.5×)'], [2, 'Fast (2×)']].map(([v, n]) => `<option value="${v}" ${p.coinMultiplier == v ? 'selected' : ''}>${n}</option>`).join('')}
       </select></div>
       <div class="setting"><span>Read questions out loud</span><select id="s-voice"><option value="1" ${p.voice ? 'selected' : ''}>On</option><option value="0" ${!p.voice ? 'selected' : ''}>Off</option></select></div>
+      <div class="setting"><span>👭 Play with real friends online<br><span class="muted">Private rooms only: a friend can join only with the 5-letter code your child shares.</span></span><select id="s-online"><option value="0" ${!p.online ? 'selected' : ''}>Off</option><option value="1" ${p.online ? 'selected' : ''}>On</option></select></div>
+      <div class="setting"><span>💬 Chat with friends<br><span class="muted">Safe chat = tap-to-send phrases and emoji only. Typing hides bad words, numbers, links and emails.</span></span><select id="s-chat"><option value="safe" ${p.chatMode !== 'typed' ? 'selected' : ''}>Safe chat only</option><option value="typed" ${p.chatMode === 'typed' ? 'selected' : ''}>Allow typing (filtered)</option></select></div>
+      <div class="setting"><span>👗 Dress-up looks cost coins<br><span class="muted">Hair styles, eyes, outfits and more are unlocked with game coins (the same coins as real rewards).</span></span><select id="s-looks"><option value="1" ${p.looksCost ? 'selected' : ''}>Yes - she earns them</option><option value="0" ${!p.looksCost ? 'selected' : ''}>No - all free</option></select></div>
       <div class="setting"><span>Give bonus coins</span><span><input id="s-bonus" type="number" inputmode="numeric" style="width:90px" value="50"> <button class="small-btn green" id="s-give">Give</button></span></div>
       <div class="setting"><span>Unlock levels up to</span><span><input id="s-unlock" type="number" inputmode="numeric" min="1" max="100" style="width:80px" value="${Save.data.unlocked}"> <button class="small-btn purple" id="s-unl">Set</button></span></div>
       <div class="setting"><span>Change PIN</span><span><input id="s-pin" type="password" inputmode="numeric" maxlength="4" style="width:90px" placeholder="new"> <button class="small-btn purple" id="s-pinb">Save</button></span></div>
@@ -292,6 +298,9 @@ const UI = {
     const msg = (t) => { $('s-msg').textContent = t; };
     $('s-mult').onchange = (e) => { p.coinMultiplier = +e.target.value; Save.writeParent(); msg('✅ Saved'); };
     $('s-voice').onchange = (e) => { p.voice = e.target.value === '1'; Save.writeParent(); msg('✅ Saved'); };
+    $('s-online').onchange = (e) => { p.online = e.target.value === '1'; Save.writeParent(); if (!p.online && Net.connected) Net.leave(); msg('✅ Saved'); };
+    $('s-looks').onchange = (e) => { p.looksCost = e.target.value === '1'; Save.writeParent(); msg('✅ Saved'); };
+    $('s-chat').onchange = (e) => { p.chatMode = e.target.value; Save.writeParent(); msg('✅ Saved'); };
     $('s-give').onclick = () => {
       const n = Math.round(+$('s-bonus').value);
       if (n > 0) { Save.data.coins += n; Save.data.lifetimeCoins += n; Save.write(); this.updateCoins(n); msg(`✅ Gave ${n} coins`); }
@@ -311,6 +320,89 @@ const UI = {
     };
   },
 };
+
+// ---------- Friends: real friends online + AI friends ----------
+Object.assign(UI, {
+  showFriends() {
+    const d = Save.data, online = Save.parent.online;
+    let html = '<h2>👭 Friends</h2>';
+    html += '<h3>🌐 Play with real friends</h3>';
+    if (!online) {
+      html += '<p class="center" style="font-size:19px">🔒 Ask a grown-up to turn on <b>Play with friends</b> in the Parents area (⚙️ Settings).</p>';
+    } else if (!d.nickname) {
+      html += `<p class="center">First, pick your princess name! <span class="muted">(Just a first name or nickname - never your last name.)</span></p>
+        <input id="fr-name" class="name-input" maxlength="12" placeholder="Your name"><div class="row-btns"><button class="big-btn pink" id="fr-name-ok">Save name</button></div>`;
+    } else if (Net.status === 'connecting') {
+      html += '<p class="center" style="font-size:20px">✨ Connecting...</p><div class="row-btns"><button class="mid-btn" id="fr-cancel">Cancel</button></div>';
+    } else if (!Net.connected) {
+      html += `<p class="center">You are <b>${esc(d.nickname)}</b> <button class="speak" id="fr-rename">✏️</button></p>
+        <div class="row-btns"><button class="big-btn pink" id="fr-host">🏰 Make a room</button></div>
+        <p class="center muted">— or join your friend's room —</p>
+        <input id="fr-code" class="code-input" maxlength="5" placeholder="CODE" autocapitalize="characters" autocomplete="off">
+        <div class="row-btns"><button class="big-btn purple" id="fr-join">🔑 Join room</button></div>`;
+    } else {
+      html += `<p class="center">Room code</p><div class="room-code">${esc(Net.code)}</div>
+        <p class="center muted">${Net.isHost ? 'Tell your friend this code so they can join you!' : 'You are in your friend\'s room.'}</p><div class="list">`;
+      const pls = [...Net.players.values()];
+      if (!pls.length) html += '<p class="center muted">Waiting for friends to join...</p>';
+      pls.forEach(pl => {
+        const where = pl.p ? `Level ${pl.p} · ${esc(themeFor(pl.p).name)}` : 'On the title screen';
+        html += `<div class="list-row"><span style="font-size:24px">⭐</span><div style="flex:1"><b>${esc(pl.name)}</b><br><span class="muted">${where}</span></div>
+          ${pl.p ? `<button class="small-btn purple" data-go="${esc(pl.id)}">Go there</button>` : ''}</div>`;
+      });
+      html += `</div><div class="row-btns"><button class="big-btn pink" id="fr-chat">💬 Chat</button><button class="mid-btn" id="fr-leave">Leave room</button></div>`;
+    }
+    html += '<h3>💕 My AI friends</h3>';
+    const team = Game.teamNames ? Game.teamNames() : [];
+    if (!d.bff.length) html += '<p class="muted">Talk to princesses and knights in the kingdom and ask them to join your team!</p>';
+    else html += '<div class="bff">' + d.bff.map(n => `<span class="bff-chip">${team.includes(n) ? '💕' : '😊'} ${esc(n)}</span>`).join('') + '</div>';
+    this.open(html);
+    const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
+    on('fr-name-ok', () => { const v = cleanName($('fr-name').value); if (v === 'Princess' && !$('fr-name').value.trim()) return; d.nickname = v; Save.write(); this.showFriends(); });
+    on('fr-rename', () => { d.nickname = ''; this.showFriends(); });
+    on('fr-host', () => { Net.host(); this.showFriends(); });
+    on('fr-join', () => { Net.join($('fr-code').value); this.showFriends(); });
+    on('fr-cancel', () => { Net.leave(true); this.showFriends(); });
+    on('fr-leave', () => { Net.leave(); this.showFriends(); });
+    on('fr-chat', () => { this.close(); this.toggleChat(true); });
+    document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => Game.goToFriend(b.dataset.go));
+  },
+
+  // Called whenever the room changes.
+  netChanged() {
+    const c = Net.connected;
+    $('btn-chat').classList.toggle('hidden', !c);
+    $('chat-log').classList.toggle('hidden', !c);
+    $('online-dot').classList.toggle('hidden', !c);
+    $('online-dot').textContent = c ? String(Net.players.size + 1) : '';
+    if (!c) $('chat-pick').classList.add('hidden');
+    if (this.modalOpen && $('modal-box').querySelector('#fr-host, #fr-leave, #fr-cancel, .room-code')) this.showFriends();
+  },
+
+  toggleChat(force) {
+    const el = $('chat-pick');
+    const show = force !== undefined ? force : el.classList.contains('hidden');
+    if (!show || !Net.connected) { el.classList.add('hidden'); return; }
+    const typed = Save.parent.chatMode === 'typed';
+    el.innerHTML = `<div class="chat-phrases">${SAFE_PHRASES.map((p, i) => `<button class="phrase" data-ph="${i}">${esc(p)}</button>`).join('')}</div>
+      <div class="chat-emoji">${CHAT_EMOJI.map(e => `<button class="emo" data-em="${e}">${e}</button>`).join('')}</div>
+      ${typed ? '<div class="chat-type"><input id="chat-in" maxlength="60" placeholder="Type a message..." autocomplete="off"><button class="small-btn pink" id="chat-send">Send</button></div>' : ''}
+      <button class="chat-close" id="chat-x">✕</button>`;
+    el.classList.remove('hidden');
+    el.querySelectorAll('[data-ph]').forEach(b => b.onclick = () => { Net.chat(SAFE_PHRASES[+b.dataset.ph]); el.classList.add('hidden'); });
+    el.querySelectorAll('[data-em]').forEach(b => b.onclick = () => Net.chat(b.dataset.em));
+    $('chat-x').onclick = () => el.classList.add('hidden');
+    if (typed) {
+      const send = () => { const v = $('chat-in').value; if (v.trim()) { Net.chat(v); $('chat-in').value = ''; } };
+      $('chat-send').onclick = send;
+      $('chat-in').onkeydown = (e) => { if (e.key === 'Enter') send(); e.stopPropagation(); };
+    }
+  },
+
+  renderChatLog() {
+    $('chat-log').innerHTML = Net.chatLog.slice(-4).map(m => `<div class="chat-line ${m.mine ? 'mine' : ''}"><b>${esc(m.name)}:</b> ${esc(m.text)}</div>`).join('');
+  },
+});
 
 // Block iOS pinch-zoom (double-tap zoom is disabled via CSS touch-action).
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(ev => document.addEventListener(ev, e => e.preventDefault()));
