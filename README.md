@@ -1,34 +1,50 @@
-# 👑 Princess Kingdom Quest
+# 👑 Princess Kingdom Quest — a first-grade learning adventure world
 
-A Roblox-style, free-roam 3D learning game for iPad (also works in any modern browser).
+A Roblox-style 3D world for iPad where a child explores, plays with her parent, completes missions, and earns
+rewards that change what she can do, while an adaptive learning engine quietly measures and grows her
+first-grade skills, and the parent gets a real progress dashboard.
 
-## How to play on iPad
-1. Host this folder on any static web host (e.g. turn on **GitHub Pages** for this repo: Settings → Pages → deploy from this branch, root folder).
-2. Open the link in **Safari** on the iPad.
-3. Tap **Share → Add to Home Screen**. It then opens full screen like an app.
+**Status of every product requirement:** see [docs/ROADMAP.md](docs/ROADMAP.md).
 
-Controls: pink joystick to move · purple button to jump · swipe the screen to look around · pink action button to talk / enter portals.
-Keyboard also works: WASD/arrows, Space to jump, E to interact.
+## Play on iPad
+1. The game is published with GitHub Pages from this branch: `https://antoineriley1-debug.github.io/-cinematic-video/`
+2. Open it in **Safari**, then **Share → Add to Home Screen**.
+3. On first launch each iPad asks who plays there: **a child** or **a parent**.
 
-## What's in it
-- **100 levels** in **20 themed worlds** (Pink Meadow, Baby Dragon Valley, Crystal Caves, Mermaid Lagoon, Dragon Tower Peaks, Queen's Grand Palace…), all with pink.
-- **10 tiers**: Sprout Princess → Brave → Clever → Kind → Dragon Friend → Crystal Knight → Star Scholar → Royal Inventor → Wise Leader → Queen of Kingdoms.
-- **Each level is a free-roam quest**: collect gems, win golden keys in learning portals, help friends who have a ❗, climb the spiral tower for the crown, and then the castle door opens to the next-level portal. Levels get bigger and longer as she goes.
-- **10 learning portals** that get harder with each level: Magic Math, Spell Castle, Pattern Path, Memory Mirror, Dragon Count, Story Scroll (reading), Wonder Lab (science), Clock & Shapes, Royal Market (money), Heart Choices (kindness & confidence).
-- **AI players** (princesses, knights, baby dragons) roam, jump, chat, go into portals, and sometimes give coins.
-- Questions can be **read out loud**, and wrong answers get growth-mindset encouragement.
-- **Parent reward store** (🔒 PIN): set each reward's name, emoji and coin price, see what was redeemed and mark it given, view progress by subject, change how fast coins are earned, give bonus coins, unlock levels.
+Controls: pink joystick to move, purple JUMP, swipe to look around, the pink action button to talk, enter
+shops and portals. Side buttons: 📅 Today · 🏆 Family team · 🐾 Pets · 🛴 Ride · 🎙️ Voice (when enabled).
 
-- **Princess Town** in every kingdom: 🍦 Ice Cream Shop, 🍭 Candy Shop, 👟 Sneaker Studio, 💇‍♀️ Hair Salon and 💅 Nail & Pedi Spa.
-  Each shop has a learning **shift** (follow orders, count, make change, sort sizes, mix colors, paint nail patterns), a **treat myself** mode, and a **delivery mission**.
-- **Make friends:** ask any princess or knight to **join your team** (up to 2). Teammates follow her into every level and earn team bonuses on missions.
-- **👗 Boutique mirror:** change skin tone, eyes, eye color, nose, mouth, cheeks, hair, outfit (gown, tutu, adventure pants, royal ball gown) and crown/tiara/bow/flower. Basics are free. Other looks are **earned with game coins** (a parent can make them all free).
-- **👭 Play with real friends (off until a parent turns it on):** one player taps *Make a room* and shares the 5-letter code, and friends on other iPads type it in to join (up to 6). Everyone sees each other in the kingdom and can chat. Chat is **safe phrases + emoji** by default. Parents can allow typing, which hides bad words, numbers, links and emails. There are no public lobbies, so only people with the code can join.
+## What's inside
+**Learning (grade 1, no multiplication)**
+- 46 skills across reading (phonics, sight words, comprehension, vocabulary, sentences, spelling, reading aloud), math (numbers, place value, addition, subtraction, shapes, patterns, measurement, time, money), science and social studies.
+- Many activity types: choose, tap-to-count, put in order, spell with tiles, follow directions, sort, read aloud (speech recognition), and science experiments (Plant Lab, Sink or Float, Magnet Lab).
+- Adaptive: difficulty follows her measured level per skill, targets ~75-85% success, changes approach after misses, and tracks time, attempts, hints, help and mistake patterns.
+- A silent baseline per area, frozen as her starting point.
 
-Progress is saved on the device (browser local storage).
+**For parents** (🔒 Parents → 📊 Progress)
+- Start → Now → Growth → Target per area, trend graphs, weekly play time, strengths / developing / needs attention with specific causes, next steps, and a per-skill table.
+- Weekly and monthly reports, created automatically and printable as PDF.
+- Reward store with your own prices, coin speed, voice/online/chat controls, grade, and progress backup and restore.
 
-### Online play notes
-Multiplayer connects iPads directly to each other (WebRTC) using the free PeerJS matchmaking service, so there is no server to set up. Most home Wi-Fi works. A few strict school or office networks block it, and then the game says it couldn't connect.
+**The world**
+- 100 levels in 20 themed kingdoms, AI players, portals, a tower, and a castle.
+- A shop street (ice cream, candy, sneakers, hair salon, nail & pedi spa), the Boutique dress-up, and AI teammates.
+- Living-world events: missing puppy, treasure, apple picking, secret agents, and challenge invites.
+- Rewards: confetti celebrations, mystery boxes, and learning milestones that unlock usable pets and vehicles.
 
-## Files
-`index.html`, `style.css`, `js/` (data, save, audio, ui, minigames, shops, net, world, game), `vendor/three.min.js` (three.js r160, MIT), `vendor/peerjs.min.js` (PeerJS 1.5.4, MIT).
+**Family play** (private 5-letter room code)
+- See each other in the world, safe chat, and private voice chat (open mic, push-to-talk, mute, volume).
+- Co-op Secret Agents escape room with split clues, Freeze Tag with AI teammates, and Math Race.
+- Family Team stats and trophy room, plus daily and weekly Family Adventures.
+- The child's progress syncs to the parent's iPad while you play together.
+
+Progress is saved on each iPad. Use Parents → Settings → Backup to keep a copy.
+
+## Code map
+`js/curriculum.js` skills & activity generators · `js/learner.js` adaptive model, baseline, insights, reports ·
+`js/present.js` activity screens & experiments · `js/dashboard.js` parent dashboard & sync ·
+`js/rewards.js` celebrations, milestones, pets, vehicles · `js/family.js` profiles, family team, daily/weekly ·
+`js/events.js` world events & missions · `js/coop.js` escape room · `js/arena.js` freeze tag & math race ·
+`js/voice.js` voice chat · `js/net.js` private rooms · `js/game.js`, `js/world.js` 3D world ·
+`js/shops.js`, `js/minigames.js`, `js/ui.js`, `js/save.js`, `js/data.js`.
+Libraries: three.js r160 (MIT), PeerJS 1.5.4 (MIT), in `vendor/`.

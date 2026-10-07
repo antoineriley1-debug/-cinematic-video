@@ -48,6 +48,7 @@ const Save = {
       online: false,         // allow playing with real friends via private room codes
       chatMode: 'safe',      // 'safe' = preset phrases + emoji only, 'typed' = filtered typing
       looksCost: true,       // boutique looks cost coins (off = everything free)
+      voiceChat: 'off',      // family voice chat in private rooms: 'off' | 'family'
     }, safeGet(PARENT_KEY) || {});
     this.fixLook();
   },

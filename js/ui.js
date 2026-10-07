@@ -205,8 +205,8 @@ const UI = {
     setTimeout(() => $('pin') && $('pin').focus(), 50);
   },
 
-  showParent(tab = 'store') {
-    const tabs = [['store', '🛍️ Store & Prices'], ['orders', '🎁 Redeemed'], ['progress', '📊 Progress'], ['settings', '⚙️ Settings']];
+  showParent(tab = 'dashboard') {
+    const tabs = [['dashboard', '📊 Progress'], ['store', '🛍️ Store & Prices'], ['orders', '🎁 Redeemed'], ['settings', '⚙️ Settings']];
     let html = '<h2>👪 Parent Area</h2><div class="row-btns" style="margin-top:0">' +
       tabs.map(([k, n]) => `<button class="mid-btn" data-tab="${k}" style="${k === tab ? 'background:#ff69b4;color:#fff' : ''}">${n}</button>`).join('') + '</div>';
     html += '<div id="ptab"></div>';
@@ -262,6 +262,8 @@ const UI = {
     });
   },
 
+  parent_dashboard() { Dashboard.show('overview'); },
+
   parent_progress() {
     const d = Save.data;
     const acc = d.answered ? Math.round(100 * d.correct / d.answered) : 0;
@@ -290,6 +292,9 @@ const UI = {
       <div class="setting"><span>👭 Play with real friends online<br><span class="muted">Private rooms only: a friend can join only with the 5-letter code your child shares.</span></span><select id="s-online"><option value="0" ${!p.online ? 'selected' : ''}>Off</option><option value="1" ${p.online ? 'selected' : ''}>On</option></select></div>
       <div class="setting"><span>💬 Chat with friends<br><span class="muted">Safe chat = tap-to-send phrases and emoji only. Typing hides bad words, numbers, links and emails.</span></span><select id="s-chat"><option value="safe" ${p.chatMode !== 'typed' ? 'selected' : ''}>Safe chat only</option><option value="typed" ${p.chatMode === 'typed' ? 'selected' : ''}>Allow typing (filtered)</option></select></div>
       <div class="setting"><span>👗 Dress-up looks cost coins<br><span class="muted">Hair styles, eyes, outfits and more are unlocked with game coins (the same coins as real rewards).</span></span><select id="s-looks"><option value="1" ${p.looksCost ? 'selected' : ''}>Yes - she earns them</option><option value="0" ${!p.looksCost ? 'selected' : ''}>No - all free</option></select></div>
+      <div class="setting"><span>🎙️ Voice chat with family<br><span class="muted">Only people in your private room (who you gave the code to) can hear each other. Off by default.</span></span><select id="s-vc"><option value="off" ${p.voiceChat !== 'family' ? 'selected' : ''}>Off</option><option value="family" ${p.voiceChat === 'family' ? 'selected' : ''}>On (private room only)</option></select></div>
+      <div class="setting"><span>Grade<br><span class="muted">Learning content is matched to this grade. Grade 1 has no multiplication.</span></span><select id="s-grade"><option value="1" selected>1st grade</option><option value="2" disabled>2nd grade (coming soon)</option></select></div>
+      <div class="setting"><span>Back up progress<br><span class="muted">Progress is saved on this iPad. Download a backup file in case Safari data is cleared.</span></span><span><button class="small-btn purple" id="s-export">⬇️ Backup</button> <label class="small-btn gray" style="cursor:pointer">⬆️ Restore<input type="file" id="s-import" accept=".json" hidden></label></span></div>
       <div class="setting"><span>Give bonus coins</span><span><input id="s-bonus" type="number" inputmode="numeric" style="width:90px" value="50"> <button class="small-btn green" id="s-give">Give</button></span></div>
       <div class="setting"><span>Unlock levels up to</span><span><input id="s-unlock" type="number" inputmode="numeric" min="1" max="100" style="width:80px" value="${Save.data.unlocked}"> <button class="small-btn purple" id="s-unl">Set</button></span></div>
       <div class="setting"><span>Change PIN</span><span><input id="s-pin" type="password" inputmode="numeric" maxlength="4" style="width:90px" placeholder="new"> <button class="small-btn purple" id="s-pinb">Save</button></span></div>
@@ -300,6 +305,16 @@ const UI = {
     $('s-voice').onchange = (e) => { p.voice = e.target.value === '1'; Save.writeParent(); msg('✅ Saved'); };
     $('s-online').onchange = (e) => { p.online = e.target.value === '1'; Save.writeParent(); if (!p.online && Net.connected) Net.leave(); msg('✅ Saved'); };
     $('s-looks').onchange = (e) => { p.looksCost = e.target.value === '1'; Save.writeParent(); msg('✅ Saved'); };
+    $('s-vc').onchange = (e) => { p.voiceChat = e.target.value; Save.writeParent(); if (p.voiceChat !== 'family' && Profile.isChild()) VoiceChat.stop(); VoiceChat.refreshButton(); msg('✅ Saved'); };
+    $('s-export').onclick = () => {
+      const blob = new Blob([JSON.stringify({ app: 'princess-quest', v: 1, at: new Date().toISOString(), data: Save.data, parent: Save.parent })], { type: 'application/json' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `princess-quest-backup-${dayKey()}.json`; a.click(); msg('✅ Backup downloaded');
+    };
+    $('s-import').onchange = (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      f.text().then(t => { const j = JSON.parse(t); if (j.app !== 'princess-quest' || !j.data) throw new Error('not a backup'); if (!confirm('Replace all progress on this iPad with this backup?')) return; Object.assign(Save.data, j.data); if (j.parent) Object.assign(Save.parent, j.parent); Save.write(); Save.writeParent(); msg('✅ Restored - reloading'); setTimeout(() => location.reload(), 800); })
+        .catch(() => msg('That file is not a game backup.'));
+    };
     $('s-chat').onchange = (e) => { p.chatMode = e.target.value; Save.writeParent(); msg('✅ Saved'); };
     $('s-give').onclick = () => {
       const n = Math.round(+$('s-bonus').value);
@@ -408,7 +423,7 @@ Object.assign(UI, {
     bar.innerHTML = pls.map(pl => {
       const here = pl.p && pl.p === mine;
       const where = here ? '📍 Here' : pl.p ? `Level ${pl.p}` : 'Menu';
-      return `<div class="fb-row"><span class="fb-name">⭐ ${esc(pl.name)}</span><span class="fb-where">${where}</span>${pl.p ? `<button class="fb-go" data-fb="${esc(pl.id)}">${here ? 'Find' : 'Go'}</button>` : ''}</div>`;
+      return `<div class="fb-row"><span class="fb-name">${typeof VoiceChat !== 'undefined' && VoiceChat.isSpeaking(pl.id) ? '🗣️' : '⭐'} ${esc(pl.name)}</span><span class="fb-where">${where}</span>${pl.p ? `<button class="fb-go" data-fb="${esc(pl.id)}">${here ? 'Find' : 'Go'}</button>` : ''}</div>`;
     }).join('');
     bar.classList.remove('hidden');
     bar.querySelectorAll('[data-fb]').forEach(b => b.onclick = () => { Sound.tap(); Game.goToFriend(b.dataset.fb); });

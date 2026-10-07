@@ -1,4 +1,5 @@
-// Educational mini-games played inside portals. Difficulty scales with level.
+// Learning portals. Each portal is a themed adventure that pulls its activities from the adaptive engine
+// (Learn.activity) for that portal's subjects, so difficulty follows HER learning profile, not the level number.
 'use strict';
 
 function clockSVG(h, m) {
@@ -9,7 +10,7 @@ function clockSVG(h, m) {
     const a = (i / 12) * Math.PI * 2;
     ticks += `<text x="${cx + Math.sin(a) * 64}" y="${cy - Math.cos(a) * 64 + 7}" font-size="20" font-weight="800" text-anchor="middle" fill="#c2185b">${i}</text>`;
   }
-  return `<svg class="clock" width="180" height="180" viewBox="0 0 180 180">
+  return `<svg class="clock" width="150" height="150" viewBox="0 0 180 180">
     <circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff" stroke="#ff69b4" stroke-width="8"/>${ticks}
     <line x1="${cx}" y1="${cy}" x2="${cx + Math.sin(ha) * 38}" y2="${cy - Math.cos(ha) * 38}" stroke="#5a2346" stroke-width="8" stroke-linecap="round"/>
     <line x1="${cx}" y1="${cy}" x2="${cx + Math.sin(ma) * 58}" y2="${cy - Math.cos(ma) * 58}" stroke="#8f4dff" stroke-width="5" stroke-linecap="round"/>
@@ -17,128 +18,55 @@ function clockSVG(h, m) {
 }
 
 const MiniGames = {
-  // opts: { practice: bool, onDone(won:boolean) }
+  // opts: { practice, onDone(won) }
   play(key, level, opts = {}) {
     const g = GAMES[key];
-    this.state = { key, g, level, opts, i: 0, right: 0, results: [], total: levelConfig(level).questions };
+    this.state = { key, g, level, opts, i: 0, right: 0, total: 4, results: [] };
     if (key === 'memory') return this.memory();
-    this.intro();
-  },
-
-  intro() {
-    const { g, level, total, opts } = this.state;
-    UI.open(`<h2>${g.icon} ${g.name}</h2>
-      <p class="center" style="font-size:20px">${total} questions · get <b>${this.needed()}</b> right to win a 🔑 key!</p>
-      <p class="center muted">${g.subject} · Level ${level}${opts.practice ? ' · Practice round (bonus coins)' : ''}</p>
-      <div class="result-big">${g.icon}</div>
+    UI.open(`<h2>${g.icon} ${g.name}</h2><div class="result-big">${g.icon}</div>
+      <p class="center" style="font-size:20px">${this.state.total} challenges · finish them to win a 🔑 key!</p>
+      ${opts.practice ? '<p class="center muted">Bonus round for extra coins</p>' : ''}
       <div class="row-btns"><button class="big-btn pink" id="mg-start">Start!</button></div>`, { onClose: () => this.exit(false) });
-    $('mg-start').onclick = () => { Sound.tap(); this.ask(); };
-    Voice.speak(g.name + '! Get ' + this.needed() + ' right to win a key.');
+    Voice.speak(`${g.name}! Finish the challenges to win a key.`);
+    $('mg-start').onclick = () => { Sound.tap(); this.next(); };
   },
 
-  needed() { return Math.ceil(this.state.total * 0.7); },
-
-  header() {
+  next() {
     const s = this.state;
-    const dots = Array.from({ length: s.total }, (_, k) => `<span class="${s.results[k] === true ? 'ok' : s.results[k] === false ? 'bad' : ''}"></span>`).join('');
-    return `<div class="mg-head"><span>${s.g.icon} ${s.g.name}</span><div class="mg-progress">${dots}</div></div>`;
-  },
-
-  ask() {
-    const s = this.state;
+    if (!s) return;
     if (s.i >= s.total) return this.finish();
-    const q = s.g.gen(s.level);
-    s.q = q;
-    if (q.kind === 'spell') return this.spell(q);
-    let html = this.header();
-    if (q.story) html += `<div class="mg-story">${esc(q.story)}</div>`;
-    html += `<div class="mg-prompt">${esc(q.prompt)} <button class="speak" id="mg-say">🔊</button></div>`;
-    if (q.visual) html += `<div class="mg-visual">${esc(q.visual)}</div>`;
-    if (q.clock) html += clockSVG(q.clock.h, q.clock.m);
-    html += `<div class="choices" ${q.choices.length === 3 ? 'style="grid-template-columns:1fr"' : ''}>` +
-      q.choices.map((c, k) => `<button class="choice" data-k="${k}">${esc(c)}</button>`).join('') + '</div>';
-    UI.open(html, { onClose: () => this.exit(false) });
-    const say = () => Voice.speak((q.story ? q.story + ' ' : '') + q.prompt + (q.choices.length <= 4 && !q.visual ? ' ' + q.choices.join(', or ') : ''));
-    $('mg-say').onclick = say;
-    if (q.story || s.key === 'heart' || s.level <= 20) say();
-    let locked = false;
-    document.querySelectorAll('.choice').forEach(b => b.onclick = () => {
-      if (locked) return; locked = true;
-      const val = q.choices[+b.dataset.k], ok = val === q.answer;
-      b.classList.add(ok ? 'right' : 'wrong');
-      if (!ok) document.querySelectorAll('.choice').forEach(c => { if (q.choices[+c.dataset.k] === q.answer) c.classList.add('right'); });
-      this.answer(ok);
+    const it = Learn.activity(null, PORTAL_DOMAINS[s.key]);
+    const dots = Array.from({ length: s.total }, (_, k) => `<span class="${s.results[k] === true ? 'ok' : s.results[k] === false ? 'bad' : ''}"></span>`).join('');
+    Present.run(it, {
+      title: `${s.g.icon} ${s.g.name}`,
+      frame: `<div class="mg-progress">${dots}</div>`,
+      onDone: (r) => {
+        if (r.cancelled) return this.exit(false);
+        const good = r.correct || (r.partial || 0) >= 0.75;
+        s.results.push(good); if (good) s.right++;
+        s.i++; this.next();
+      },
     });
-  },
-
-  spell(q) {
-    const s = this.state;
-    const picked = [];
-    const render = () => {
-      let html = this.header() + `<div class="mg-prompt">${esc(q.prompt)} <button class="speak" id="mg-say">🔊</button></div>
-        <p class="center muted">Hint: it sounds like “${esc(q.word)}” - tap 🔊 to hear it</p>
-        <div class="answer-slots">${q.word.split('').map((_, k) => `<div class="slot">${picked[k] !== undefined ? esc(q.letters[picked[k]]) : ''}</div>`).join('')}</div>
-        <div class="letters">${q.letters.map((l, k) => `<button class="letter ${picked.includes(k) ? 'used' : ''}" data-k="${k}">${esc(l)}</button>`).join('')}</div>
-        <div class="row-btns"><button class="mid-btn" id="sp-undo">⌫ Undo</button></div>`;
-      UI.open(html, { onClose: () => this.exit(false) });
-      // Hide the word from the hint for older levels so it is real spelling, not copying.
-      if (s.level > 10) document.querySelector('.muted').textContent = 'Tap 🔊 to hear the word, then spell it!';
-      $('mg-say').onclick = () => Voice.speak('Spell the word: ' + q.word);
-      $('sp-undo').onclick = () => { picked.pop(); Sound.tap(); render(); };
-      document.querySelectorAll('.letter').forEach(b => b.onclick = () => {
-        const k = +b.dataset.k; if (picked.includes(k)) return;
-        picked.push(k); Sound.tap();
-        if (picked.length === q.word.length) {
-          const typed = picked.map(p => q.letters[p]).join('');
-          render();
-          const ok = typed === q.word;
-          document.querySelectorAll('.slot').forEach((el, idx) => { el.style.color = ok ? '#1fb86a' : '#ff9f43'; if (!ok) el.textContent = q.word[idx]; });
-          document.querySelectorAll('.letter,#sp-undo').forEach(x => x.disabled = true);
-          this.answer(ok);
-        } else render();
-      });
-    };
-    render();
-    if (s.i === 0 || s.level <= 30) Voice.speak('Spell the word: ' + q.word);
-  },
-
-  answer(ok) {
-    const s = this.state;
-    s.results.push(ok); if (ok) s.right++;
-    Save.recordAnswer(s.g.subject, ok);
-    if (ok) { Sound.right(); } else { Sound.wrong(); }
-    const fb = document.createElement('p');
-    fb.className = 'affirm';
-    fb.textContent = ok ? pick(['Correct! ✨', 'You got it! 💖', 'Brilliant! 🌟', 'Yes! 👑']) : 'Good try! The right answer is shown. 🌱';
-    $('modal-box').appendChild(fb);
-    const next = document.createElement('div');
-    next.className = 'row-btns';
-    next.innerHTML = '<button class="big-btn purple" id="mg-next">Next ➜</button>';
-    $('modal-box').appendChild(next);
-    $('modal-box').scrollTop = $('modal-box').scrollHeight;
-    $('mg-next').onclick = () => { s.i++; this.ask(); };
-    if (!ok) Voice.speak('Good try! The answer is ' + String(s.q.answer || s.q.word));
   },
 
   finish() {
     const s = this.state;
-    const won = s.right >= this.needed();
+    // Keep it achievable: 3 of 4 (second tries count) wins the key; otherwise a friendly retry.
+    const won = s.right >= s.total - 1;
+    Learn.countActivity('portal');
     if (won) {
-      const stars = s.right === s.total ? 3 : s.right >= s.total * 0.85 ? 2 : 1;
-      const base = 6 + s.level * 0.15 + s.right;
-      const coins = Save.addCoins(s.opts.practice ? base * 0.4 : base, 'game');
+      const stars = s.right === s.total ? 3 : 2;
+      const coins = Save.addCoins((6 + s.right * 2) * (s.opts.practice ? 0.4 : 1), 'game');
       const aff = pick(AFFIRMATIONS);
-      Sound.fanfare();
       UI.open(`<h2>🎉 You did it!</h2><div class="result-big">${'⭐'.repeat(stars)}</div>
-        <p class="center" style="font-size:22px">${s.right} / ${s.total} right</p>
         <p class="affirm">${esc(aff)}</p>
         <p class="center" style="font-size:22px">${s.opts.practice ? '' : '🔑 Golden key earned! · '}🪙 +${coins}</p>
         <div class="row-btns"><button class="big-btn pink" id="mg-done">Back to the kingdom</button></div>`, { onClose: () => this.exit(true) });
+      Rewards.celebrate(s.opts.practice ? 'small' : 'medium');
       Voice.speak(aff + (s.opts.practice ? '' : ' You earned a golden key!'));
       $('mg-done').onclick = () => UI.close();
     } else {
       UI.open(`<h2>So close! 🌱</h2><div class="result-big">💪</div>
-        <p class="center" style="font-size:22px">${s.right} / ${s.total} right · you need ${this.needed()}</p>
         <p class="affirm">Every try makes your brain stronger!</p>
         <div class="row-btns"><button class="big-btn pink" id="mg-retry">Try again</button><button class="big-btn gray" id="mg-quit">Explore</button></div>`, { onClose: () => this.exit(false) });
       Voice.speak('So close! Every try makes your brain stronger. Want to try again?');
@@ -147,50 +75,41 @@ const MiniGames = {
     }
   },
 
+  // Sight-word memory: match pairs of words she is learning, reading each one aloud as it flips.
   memory() {
     const s = this.state;
-    const pairs = Math.min(10, 4 + Math.floor(s.level / 15));
-    const pool = shuffle(['🐉', '🦄', '👑', '💎', '🌸', '🧁', '🦋', '⭐', '🏰', '🌙', '🍓', '🎀', '🐠', '🌈']).slice(0, pairs);
-    const deck = shuffle([...pool, ...pool]);
-    const cols = deck.length <= 8 ? 4 : deck.length <= 12 ? 4 : deck.length <= 16 ? 4 : 5;
+    const lv = Learn.levelFor('sight_words');
+    const pairs = Math.min(8, 4 + Math.floor(lv / 2));
+    const words = shuffle(SIGHT.slice(0, lv).flat()).slice(0, pairs);
+    const deck = shuffle([...words, ...words]);
     let open = [], matched = 0, moves = 0, busy = false;
     UI.open(`<div class="mg-head"><span>🪞 Memory Mirror</span><span id="mem-moves">Moves: 0</span></div>
-      <div class="mg-prompt">Find all the matching pairs!</div>
-      <div class="mem-grid" style="grid-template-columns:repeat(${cols},1fr)">${deck.map((e, k) => `<button class="card" data-k="${k}">${e}</button>`).join('')}</div>`,
+      <div class="mg-prompt">Find the matching words! Read each word you flip.</div>
+      <div class="mem-grid" style="grid-template-columns:repeat(4,1fr)">${deck.map((w, k) => `<button class="card word" data-k="${k}">${esc(w)}</button>`).join('')}</div>`,
     { onClose: () => this.exit(matched === pairs) });
-    Voice.speak('Find all the matching pairs!');
+    Voice.speak('Find the matching words!');
     document.querySelectorAll('.card').forEach(c => c.onclick = () => {
       if (busy || c.classList.contains('open') || c.classList.contains('matched')) return;
-      c.classList.add('open'); open.push(c); Sound.tap();
+      c.classList.add('open'); open.push(c); Sound.tap(); Voice.speak(deck[+c.dataset.k]);
       if (open.length === 2) {
         moves++; $('mem-moves').textContent = 'Moves: ' + moves;
         const [a, b] = open;
         if (deck[+a.dataset.k] === deck[+b.dataset.k]) {
           a.classList.add('matched'); b.classList.add('matched'); open = []; matched++; Sound.right();
-          if (matched === pairs) {
-            Save.recordAnswer('Memory', true);
-            s.right = s.total = 1;
-            setTimeout(() => { s.results = [true]; s.right = 1; s.total = 1; this.finishMemory(moves, pairs); }, 500);
-          }
-        } else {
-          busy = true;
-          setTimeout(() => { a.classList.remove('open'); b.classList.remove('open'); open = []; busy = false; }, 800);
-        }
+          if (matched === pairs) setTimeout(() => this.finishMemory(moves, pairs), 500);
+        } else { busy = true; setTimeout(() => { a.classList.remove('open'); b.classList.remove('open'); open = []; busy = false; }, 900); }
       }
     });
   },
-
   finishMemory(moves, pairs) {
     const s = this.state;
     const stars = moves <= pairs * 1.5 ? 3 : moves <= pairs * 2.2 ? 2 : 1;
-    const coins = Save.addCoins((6 + s.level * 0.15 + stars * 3) * (s.opts.practice ? 0.4 : 1), 'game');
-    const aff = pick(AFFIRMATIONS);
-    Sound.fanfare();
+    const coins = Save.addCoins((6 + stars * 3) * (s.opts.practice ? 0.4 : 1), 'game');
+    Learn.countActivity('portal');
     UI.open(`<h2>🎉 All pairs found!</h2><div class="result-big">${'⭐'.repeat(stars)}</div>
-      <p class="center" style="font-size:22px">${moves} moves</p><p class="affirm">${esc(aff)}</p>
-      <p class="center" style="font-size:22px">${s.opts.practice ? '' : '🔑 Golden key earned! · '}🪙 +${coins}</p>
+      <p class="affirm">${esc(pick(AFFIRMATIONS))}</p><p class="center" style="font-size:22px">${s.opts.practice ? '' : '🔑 Golden key earned! · '}🪙 +${coins}</p>
       <div class="row-btns"><button class="big-btn pink" id="mg-done">Back to the kingdom</button></div>`, { onClose: () => this.exit(true) });
-    Voice.speak(aff);
+    Rewards.celebrate('medium');
     $('mg-done').onclick = () => UI.close();
   },
 

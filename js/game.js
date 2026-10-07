@@ -24,7 +24,7 @@ const Game = {
     // Player
     this.player = {
       pos: new THREE.Vector3(), vy: 0, onGround: true, lastGround: 0, facing: 0, walk: 0,
-      mesh: makePrincess(this.lookOpts(Save.data.look)),
+      mesh: makeAvatar(this.lookOpts(Save.data.look)),
     };
     this.player.shadow = makeShadow(0.65);
     // sparkle trail
@@ -36,6 +36,8 @@ const Game = {
 
     this.camPos = new THREE.Vector3();
     this.remotes = new Map();
+    Rewards.inv();
+    setTimeout(() => { this.refreshPet(); this.refreshVehicle(); }, 0);
     this.shopCooldown = new Set();
     this.loop = this.loop.bind(this);
     requestAnimationFrame(this.loop);
@@ -44,14 +46,64 @@ const Game = {
   },
 
   lookOpts(l) {
-    return { dress: l.dress, hair: l.hair, skin: l.skin, hairStyle: l.hairStyle, shoes: l.shoes,
+    return { dress: l.dress, hair: l.hair, skin: l.skin, hairStyle: l.hairStyle, shoes: l.shoes, adult: l.adult, shirt: l.shirt,
       eyes: l.eyes, eyeColor: l.eyeColor, nose: l.nose, mouth: l.mouth, cheeks: l.cheeks, outfit: l.outfit, headwear: l.headwear };
   },
 
   // Rebuild her avatar after a salon / sneaker change.
+  // ---------- pet companion ----------
+  refreshPet() {
+    const inv = Rewards.inv();
+    if (this.petMesh && this.petMesh.parent) this.petMesh.parent.remove(this.petMesh);
+    this.petMesh = null;
+    if (!inv.activePet) return;
+    const info = inv.petInfo[inv.activePet];
+    this.petMesh = makePet(inv.activePet, info.collar);
+    const label = makeLabel(info.name, { height: 0.4, color: '#7a3b63' }); label.position.y = 1.25; this.petMesh.add(label);
+    this.pet = { x: this.player.pos.x - 1.5, z: this.player.pos.z + 1.5, y: 0, hop: 0, fetch: null, react: 0 };
+    this.petMesh.position.set(this.pet.x, 0, this.pet.z);
+    if (this.W) this.W.root.add(this.petMesh);
+  },
+  updatePet(dt, t) {
+    if (!this.petMesh || !this.W) return;
+    const pt = this.pet, P = this.player;
+    let tx, tz;
+    if (pt.fetch) {
+      // run to the ball, then bring it back
+      const f = pt.fetch; tx = f.stage === 0 ? f.x : P.pos.x; tz = f.stage === 0 ? f.z : P.pos.z;
+      if (Math.hypot(tx - pt.x, tz - pt.z) < 0.8) { if (f.stage === 0) { f.stage = 1; f.ball.visible = false; } else { this.W.root.remove(f.ball); pt.fetch = null; Sound.right(); UI.toast('🎾 Good fetch!'); pt.react = 1.2; const inf = Rewards.inv().petInfo[Rewards.inv().activePet]; if (inf) { inf.happy = Math.min(100, inf.happy + 10); Save.write(); } } }
+    } else { tx = P.pos.x - Math.sin(P.facing + 0.6) * 1.8; tz = P.pos.z - Math.cos(P.facing + 0.6) * 1.8; }
+    const dx = tx - pt.x, dz = tz - pt.z, d = Math.hypot(dx, dz);
+    if (d > 40) { pt.x = tx; pt.z = tz; }
+    else if (d > 0.4) { const sp = Math.min(d * 3, pt.fetch ? 9 : 12) * dt; pt.x += dx / d * sp; pt.z += dz / d * sp; pt.hop += dt * 14; this.petMesh.rotation.y = Math.atan2(dx, dz); }
+    const gh = this.groundAt(pt.x, pt.z, pt.y + 1.2, 0.25);
+    pt.y += (gh - pt.y) * Math.min(1, dt * 10);
+    const hop = d > 0.4 ? Math.abs(Math.sin(pt.hop)) * 0.18 : 0;
+    if (pt.react > 0) { pt.react -= dt; this.petMesh.rotation.y += dt * 12; }
+    this.petMesh.position.set(pt.x, pt.y + hop + (pt.react > 0 ? Math.abs(Math.sin(pt.react * 9)) * 0.4 : 0), pt.z);
+    if (this.petMesh.userData.tail) this.petMesh.userData.tail.position.x = Math.sin(t * 12) * 0.06;
+  },
+  petReact() { if (this.pet) this.pet.react = 1.2; },
+  petFetch() {
+    if (!this.pet) return;
+    const P = this.player, a = P.facing + (Math.random() - 0.5) * 0.8;
+    const x = P.pos.x + Math.sin(a) * 9, z = P.pos.z + Math.cos(a) * 9;
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), mat(0xc6ff3d)); ball.position.set(x, this.groundAt(x, z, 99) + 0.2, z);
+    this.W.root.add(ball);
+    this.pet.fetch = { x, z, stage: 0, ball };
+    Voice.speak('Fetch!');
+  },
+  // ---------- vehicle ----------
+  refreshVehicle() {
+    if (this.vehicleMesh && this.vehicleMesh.parent) this.vehicleMesh.parent.remove(this.vehicleMesh);
+    this.vehicleMesh = null;
+    const v = Save.data.inv && Save.data.inv.vehicle;
+    if (v) { this.vehicleMesh = makeVehicle(v); if (this.W) this.W.root.add(this.vehicleMesh); }
+  },
+
   refreshLook() {
     const P = this.player, old = P.mesh, parent = old.parent;
-    P.mesh = makePrincess(this.lookOpts(Save.data.look));
+    P.mesh = makeAvatar(this.lookOpts(Save.data.look));
     P.mesh.position.copy(old.position); P.mesh.rotation.copy(old.rotation);
     if (parent) { parent.remove(old); parent.add(P.mesh); }
     Net.sendLook();
@@ -120,6 +172,8 @@ const Game = {
   buildLevel(level, attract = false) {
     if (this.W) {
       this.W.root.remove(this.player.mesh, this.player.shadow, this.sparks);
+      if (this.petMesh) this.W.root.remove(this.petMesh);
+      if (this.vehicleMesh) this.W.root.remove(this.vehicleMesh);
       for (const r of this.remotes.values()) this.W.root.remove(r.mesh, r.shadow);
       World.dispose(this.scene, this.W);
     }
@@ -133,12 +187,15 @@ const Game = {
     if (this.state.crown) W.crown.visible = false;
 
     W.root.add(this.player.mesh); W.root.add(this.player.shadow); W.root.add(this.sparks);
+    if (this.petMesh) W.root.add(this.petMesh);
+    if (this.vehicleMesh) W.root.add(this.vehicleMesh);
     this.player.pos.set(W.spawn.x, 0, W.spawn.z);
     this.player.vy = 0; this.player.facing = Math.PI;
     this.input.yaw = 0;
     this.camPos.set(W.spawn.x, 8, W.spawn.z + 12);
 
     this.spawnNPCs();
+    if (typeof World2 !== 'undefined' && !attract) World2.reset();
     this.portalCooldown = new Set();
     this.doorOpened = false;
     if (this.allDone()) this.openDoor(true);
@@ -360,14 +417,17 @@ const Game = {
     const P = this.player, I = this.input, W = this.W;
     // input -> camera-relative direction
     let jx = I.jx, jy = I.jy;
-    const k = I.keys;
+    const frozen = typeof Tag !== 'undefined' && Tag.isFrozenMe();
+    if (frozen) { jx = jy = 0; I.jumpQueued = 0; }
+    const k = frozen ? {} : I.keys;
     if (k.KeyW || k.ArrowUp) jy = 1; if (k.KeyS || k.ArrowDown) jy = -1;
     if (k.KeyA || k.ArrowLeft) jx = -1; if (k.KeyD || k.ArrowRight) jx = 1;
     const mag = Math.min(1, Math.hypot(jx, jy));
     const fx = -Math.sin(I.yaw), fz = -Math.cos(I.yaw), rx = Math.cos(I.yaw), rz = -Math.sin(I.yaw);
     let mx = rx * jx + fx * jy, mz = rz * jx + fz * jy;
     const ml = Math.hypot(mx, mz);
-    const speed = 7.5;
+    const veh = Save.data.inv && Save.data.inv.vehicle ? VEHICLES[Save.data.inv.vehicle] : null;
+    const speed = 7.5 * (veh ? veh.speed : 1);
     if (ml > 0.05) {
       mx = mx / ml * mag * speed; mz = mz / ml * mag * speed;
       const want = Math.atan2(mx, mz);
@@ -400,11 +460,18 @@ const Game = {
     const moving = ml > 0.05;
     P.walk += moving ? dt * 12 : 0;
     const m = P.mesh;
-    m.position.set(P.pos.x, P.pos.y + (moving && P.onGround ? Math.abs(Math.sin(P.walk)) * 0.1 : 0), P.pos.z);
+    const ride = this.vehicleMesh;
+    const lift = ride ? ride.userData.lift : 0;
+    m.position.set(P.pos.x, P.pos.y + lift + (moving && P.onGround && !ride ? Math.abs(Math.sin(P.walk)) * 0.1 : 0), P.pos.z);
     m.rotation.y = P.facing;
+    if (ride) { ride.position.set(P.pos.x, P.pos.y, P.pos.z); ride.rotation.y = P.facing; m.scale.y = ride.userData.seated ? 0.8 : 1; } else m.scale.y = 1;
+    // celebration dance: spin and wave both arms
+    if (P.cheer > 0) { P.cheer -= dt; m.rotation.y = P.facing + Math.sin(P.cheer * 6) * 0.8; m.position.y += Math.abs(Math.sin(P.cheer * 8)) * 0.35; }
     const arms = m.userData.arms;
     arms[0].rotation.x = moving ? Math.sin(P.walk) * 0.8 : 0; arms[1].rotation.x = -arms[0].rotation.x;
     if (!P.onGround) { arms[0].rotation.z = -0.8; arms[1].rotation.z = 0.8; } else { arms[0].rotation.z = arms[1].rotation.z = 0; }
+    if (P.cheer > 0) { arms[0].rotation.z = -2.6 + Math.sin(P.cheer * 10) * 0.3; arms[1].rotation.z = 2.6 - Math.sin(P.cheer * 10) * 0.3; arms[0].rotation.x = arms[1].rotation.x = 0; }
+    if (this.vehicleMesh && this.vehicleMesh.userData.seated) { arms[0].rotation.x = arms[1].rotation.x = -1.2; }
     P.shadow.position.set(P.pos.x, gh + 0.03, P.pos.z);
     P.shadow.scale.setScalar(Math.max(0.4, 1 - (P.pos.y - gh) * 0.12));
 
@@ -625,46 +692,36 @@ const Game = {
   },
 
   friendQuest(n) {
-    const gens = [genHeart, genScience, genRead, genMath, genCount];
-    const q = pick(gens)(this.level);
-    const ask = () => {
-      UI.open(`<h2>❗ ${esc(n.name)} needs help!</h2>
-        ${q.story ? `<div class="mg-story">${esc(q.story)}</div>` : ''}
-        <div class="mg-prompt">${esc(q.prompt)} <button class="speak" id="f-say">🔊</button></div>
-        ${q.visual ? `<div class="mg-visual">${esc(q.visual)}</div>` : ''}
-        <div class="choices" ${q.choices.length === 3 ? 'style="grid-template-columns:1fr"' : ''}>${q.choices.map((c, k) => `<button class="choice" data-k="${k}">${esc(c)}</button>`).join('')}</div>`);
-      const say = () => Voice.speak(`${n.name} asks: ` + (q.story ? q.story + ' ' : '') + q.prompt);
-      $('f-say').onclick = say; say();
-      document.querySelectorAll('.choice').forEach(b => b.onclick = () => {
-        const ok = q.choices[+b.dataset.k] === q.answer;
-        Save.recordAnswer('Helping friends', ok);
-        if (ok) {
-          Sound.right();
-          this.state.friends.push(n.i);
-          n.mark.material.map.dispose();
-          n.mesh.remove(n.mark); n.mark = makeLabel('💖', { height: 0.9, bg: 'rgba(255,255,255,0)' }); n.mark.position.y = 3.5; n.mesh.add(n.mark);
-          const c = Save.addCoins(8 + this.level * 0.15, 'friend');
-          UI.open(`<h2>💖 Thank you!</h2><div class="result-big">🤗</div>
-            <p class="center" style="font-size:22px">“You helped me so much! You are a true princess!”</p>
-            <p class="center" style="font-size:20px">🪙 +${c}</p>
-            <div class="row-btns"><button class="big-btn pink" id="f-ok">You're welcome!</button></div>`);
-          Voice.speak('Thank you! You helped me so much! You are a true princess!');
-          $('f-ok').onclick = () => UI.close();
-          this.afterProgress();
-        } else {
-          Sound.wrong();
-          b.classList.add('wrong');
-          document.querySelectorAll('.choice').forEach(c => { if (q.choices[+c.dataset.k] === q.answer) c.classList.add('right'); });
-          const p = document.createElement('div'); p.className = 'row-btns';
-          p.innerHTML = '<p class="affirm" style="width:100%">Good try! Let\'s try a different one. 🌱</p><button class="big-btn purple" id="f-again">Try another</button>';
-          $('modal-box').appendChild(p);
-          Voice.speak('Good try! The answer was ' + q.answer + '. Let us try a different one.');
-          document.querySelectorAll('.choice').forEach(c => c.disabled = true);
+    // Friends ask for help with whatever she is ready to practice next (adaptive engine).
+    const it = Learn.activity();
+    Present.run(it, {
+      title: `❗ ${n.name} needs help!`,
+      frame: `<div class="cust"><div class="cust-face">${/^(Sir|Knight|Prince)/.test(n.name) ? '🛡️' : '👸'}</div><div class="cust-bubble"><b>${esc(n.name)}:</b> Can you help me with this?</div></div>`,
+      onDone: (r) => {
+        if (r.cancelled) return;
+        const ok = r.correct || (r.partial || 0) >= 0.75;
+        if (!ok) {
+          UI.open(`<h2>🌱 Let's try another one!</h2><p class="affirm">${esc(n.name)}: “Thanks for trying! Let's do a different one together.”</p>
+            <div class="row-btns"><button class="big-btn purple" id="f-again">OK!</button><button class="big-btn gray" id="f-later">Later</button></div>`);
           $('f-again').onclick = () => this.friendQuest(n);
+          $('f-later').onclick = () => UI.close();
+          return;
         }
-      });
-    };
-    ask();
+        this.state.friends.push(n.i);
+        n.mark.material.map.dispose();
+        n.mesh.remove(n.mark); n.mark = makeLabel('💖', { height: 0.9, bg: 'rgba(255,255,255,0)' }); n.mark.position.y = 3.5; n.mesh.add(n.mark);
+        const c = Save.addCoins(8 + this.level * 0.15, 'friend');
+        Learn.countActivity('friend');
+        UI.open(`<h2>💖 Thank you!</h2><div class="result-big">🤗</div>
+          <p class="center" style="font-size:22px">“You helped me so much! You are a true princess!”</p>
+          <p class="center" style="font-size:20px">🪙 +${c}</p>
+          <div class="row-btns"><button class="big-btn pink" id="f-ok">You're welcome!</button></div>`);
+        Rewards.celebrate('small');
+        Voice.speak('Thank you! You helped me so much! You are a true princess!');
+        $('f-ok').onclick = () => UI.close();
+        this.afterProgress();
+      },
+    });
   },
 
   completeLevel() {
@@ -732,7 +789,7 @@ const Game = {
     if (P.bubble && t > P.bubbleUntil) { P.mesh.remove(P.bubble); P.bubble = null; }
   },
   makeRemoteMesh(pl) {
-    const m = makePrincess(this.lookOpts(pl.look));
+    const m = makeAvatar(this.lookOpts(pl.look));
     // name tag shows through walls so friends can find each other
     const label = makeLabel('⭐ ' + pl.name, { height: 0.7, color: '#0088a8', depthTest: false }); label.position.y = 2.9; label.renderOrder = 10; m.add(label);
     return m;
@@ -742,6 +799,12 @@ const Game = {
     const parent = r.mesh.parent; if (parent) parent.remove(r.mesh);
     r.mesh = this.makeRemoteMesh(pl); r.bubble = null;
     if (parent) parent.add(r.mesh);
+  },
+  // speaking indicator above a friend's avatar
+  setSpeaking(id, on) {
+    const r = this.remotes.get(id); if (!r) return;
+    if (on && !r.talk) { r.talk = makeLabel('🔊', { height: 0.7, bg: 'rgba(255,255,255,0)', depthTest: false }); r.talk.position.set(0.8, 2.9, 0); r.mesh.add(r.talk); }
+    if (!on && r.talk) { r.mesh.remove(r.talk); r.talk = null; }
   },
   showChatBubble(id, text) {
     const holder = id === 'me' ? this.player : this.remotes.get(id);
@@ -782,6 +845,8 @@ const Game = {
     W.gems.forEach(g => { if (!g.taken) dot(g.x, g.z, 2, '#ff2e93'); });
     W.portals.forEach(p => dot(p.x, p.z, 4, this.state.keys.includes(p.index) ? '#ffd700' : '#' + new THREE.Color(GAMES[p.key].color).getHexString()));
     W.shops.forEach(s => dot(s.x, s.z, 4, '#ffffff'));
+    if (typeof World2 !== 'undefined') World2.markers.forEach(m => dot(m.x, m.z, 6, '#ffd700'));
+    if (typeof Tag !== 'undefined' && Tag.st) Tag.st.bots.forEach(b => dot(b.x, b.z, 4, b.team === 'pink' ? '#ff4fa3' : '#48a8ff'));
     this.npcs.forEach(n => { if (n.missionTarget) dot(n.x, n.z, 5, '#8f4dff'); });
     for (const r of this.remotes.values()) if (r.mesh.parent) dot(r.pos.x, r.pos.z, 5, '#00b8d4');
     this.npcs.forEach(n => { if (n.hidden <= 0) dot(n.x, n.z, n.friend && !this.state.friends.includes(n.i) ? 4 : 2, n.friend && !this.state.friends.includes(n.i) ? '#ff9f43' : '#ffffff'); });
@@ -822,6 +887,14 @@ const Game = {
       Net.sendState({ p: this.running ? this.level : 0, x: +P.pos.x.toFixed(2), y: +P.pos.y.toFixed(2), z: +P.pos.z.toFixed(2), f: +P.facing.toFixed(2), m: Math.hypot(this.input.jx, this.input.jy) > 0.05 || Object.values(this.input.keys).some(Boolean) ? 1 : 0 });
     }
     this.updateRemotes(dt, t);
+    this.updatePet(dt, t);
+    if (this.running) {
+      Rewards.flush();
+      if (typeof World2 !== 'undefined') World2.update(dt, t);
+      if (typeof Tag !== 'undefined' && Tag.st) Tag.update(dt, t);
+      this.secAcc = (this.secAcc || 0) + dt;
+      if (this.secAcc >= 1 && !document.hidden) { this.secAcc -= 1; Learn.tick(1); }
+    }
     // ambient animation
     W.portals.forEach(p => { p.disc.rotation.z = t; p.ring.rotation.z = Math.sin(t) * 0.1; });
     W.levelPortal.disc.material.opacity = this.doorOpened ? 0.6 + Math.sin(t * 4) * 0.25 : 0.25;
@@ -842,13 +915,18 @@ const Game = {
 window.addEventListener('load', () => {
   Game.init();
   UI.showTitle();
-  $('btn-play').onclick = () => { Sound.unlock(); Sound.tap(); Game.startLevel(Save.data.levelState ? Save.data.levelState.level : Save.data.current || 1); };
+  $('btn-play').onclick = () => { Sound.unlock(); Sound.tap(); Profile.ensure(() => Game.startLevel(Save.data.levelState ? Save.data.levelState.level : Save.data.current || 1)); };
   $('btn-levels').onclick = () => { Sound.unlock(); UI.showLevels(); };
   $('btn-store-title').onclick = () => { Sound.unlock(); UI.showStore(); };
   $('btn-parent-title').onclick = () => { Sound.unlock(); UI.showParentGate(); };
   $('btn-friends-title').onclick = () => { Sound.unlock(); UI.showFriends(); };
   $('btn-friends').onclick = () => { Sound.tap(); UI.showFriends(); };
   $('btn-dress').onclick = () => { Sound.tap(); Shops.boutique(); };
+  $('btn-today').onclick = () => { Sound.tap(); Daily.show(); };
+  $('btn-family').onclick = () => { Sound.tap(); Family.show(); };
+  $('btn-pets').onclick = () => { Sound.tap(); Rewards.showPets(); };
+  $('btn-ride').onclick = () => { Sound.tap(); Rewards.showVehicles(); };
+  Learn.autoReports();
   $('btn-dress-title').onclick = () => { Sound.unlock(); Shops.boutique(); };
   $('btn-chat').onclick = () => { Sound.tap(); UI.toggleChat(); };
   document.addEventListener('visibilitychange', () => { if (document.hidden && Game.running && !UI.modalOpen) UI.showMenu(); });

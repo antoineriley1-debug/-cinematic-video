@@ -20,6 +20,7 @@ function cleanLook(l) {
     eyes: pickId('eyes', l.eyes), nose: pickId('nose', l.nose), mouth: pickId('mouth', l.mouth),
     cheeks: pickId('cheeks', l.cheeks), outfit: pickId('outfit', l.outfit), headwear: pickId('headwear', l.headwear),
     shoes: { base: num(sh.base, 0xffffff), laces: num(sh.laces, 0xff69b4), sole: num(sh.sole, 0xff69b4) },
+    adult: !!l.adult, shirt: num(l.shirt, 0x48a8ff),
   };
 }
 const numOr = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
@@ -37,7 +38,24 @@ const Net = {
     return o;
   },
   get connected() { return this.status === 'hosting' || this.status === 'joined'; },
-  me() { return { name: cleanName(Save.data.nickname), look: cleanLook(Save.data.look) }; },
+  me() { return { name: cleanName(Profile.name()), look: cleanLook(Save.data.look), role: Profile.isParent() ? 'parent' : 'child' }; },
+  handlers: {},
+  on(kind, fn) { this.handlers[kind] = fn; },
+  // Generic game channel used by missions, challenges, voice signalling and syncing.
+  sendX(k, d, to) {
+    if (!this.connected) return;
+    const msg = { t: 'x', k, d, to };
+    if (this.isHost) { this.hostRouteX(this.myId, msg); }
+    else if (this.hostConn && this.hostConn.open) this.hostConn.send(msg);
+  },
+  hostRouteX(from, msg) {
+    const out = { t: 'x', k: msg.k, d: msg.d, id: from };
+    if (msg.to) { if (msg.to === this.myId) this.gotX(from, msg.k, msg.d); else { const c = this.conns.get(msg.to); if (c && c.open) c.send(out); } return; }
+    this.broadcast(out, from);
+    if (from !== this.myId) this.gotX(from, msg.k, msg.d);
+  },
+  gotX(from, k, d) { const fn = this.handlers[k]; if (fn) { try { fn(from, d); } catch (e) { console.warn('net handler', k, e); } } },
+  parents() { return [...this.players.values()].filter(p => p.role === 'parent'); },
 
   host() {
     if (this.peer) this.leave(true);
@@ -99,11 +117,11 @@ const Net = {
     if (d.t === 'hello') {
       if (this.conns.size >= ROOM_MAX - 1) { c.send({ t: 'full' }); setTimeout(() => c.close(), 300); return; }
       this.conns.set(c.peer, c);
-      const pl = { id: c.peer, name: cleanName(d.name), look: cleanLook(d.look), p: 0, x: 0, y: 0, z: 0, f: 0, m: 0 };
+      const pl = { id: c.peer, name: cleanName(d.name), look: cleanLook(d.look), role: d.role === 'parent' ? 'parent' : 'child', p: 0, x: 0, y: 0, z: 0, f: 0, m: 0 };
       this.players.set(c.peer, pl);
       const roster = [Object.assign({ id: this.myId }, this.me(), this.lastState || {})].concat([...this.players.values()].filter(p => p.id !== c.peer));
       c.send({ t: 'roster', players: roster });
-      this.broadcast({ t: 'join', id: pl.id, name: pl.name, look: pl.look }, c.peer);
+      this.broadcast({ t: 'join', id: pl.id, name: pl.name, look: pl.look, role: pl.role }, c.peer);
       UI.toast(`🎉 ${pl.name} joined!`); Sound.right();
       this.changed();
     } else if (!this.conns.has(c.peer)) {
@@ -116,6 +134,9 @@ const Net = {
       const pl = this.players.get(c.peer);
       this.broadcast({ t: 'chat', id: c.peer, name: pl ? pl.name : 'Friend', text }, c.peer);
       this.gotChat(c.peer, pl ? pl.name : 'Friend', text);
+    } else if (d.t === 'x') {
+      if (typeof d.k !== 'string' || d.k.length > 20) return;
+      this.hostRouteX(c.peer, d);
     } else if (d.t === 'look') {
       const pl = this.players.get(c.peer); if (!pl) return;
       pl.look = cleanLook(d.look);
@@ -132,11 +153,11 @@ const Net = {
     if (!d || typeof d !== 'object') return;
     if (d.t === 'roster') {
       this.players.clear();
-      (d.players || []).slice(0, ROOM_MAX).forEach(p => { if (p.id !== this.myId) { this.players.set(p.id, { id: p.id, name: cleanName(p.name), look: cleanLook(p.look), p: 0, x: 0, y: 0, z: 0, f: 0, m: 0 }); this.applyState(p.id, p); } });
+      (d.players || []).slice(0, ROOM_MAX).forEach(p => { if (p.id !== this.myId) { this.players.set(p.id, { id: p.id, name: cleanName(p.name), look: cleanLook(p.look), role: p.role === 'parent' ? 'parent' : 'child', p: 0, x: 0, y: 0, z: 0, f: 0, m: 0 }); this.applyState(p.id, p); } });
       this.changed();
     } else if (d.t === 'join') {
       if (d.id === this.myId) return;
-      this.players.set(d.id, { id: d.id, name: cleanName(d.name), look: cleanLook(d.look), p: 0, x: 0, y: 0, z: 0, f: 0, m: 0 });
+      this.players.set(d.id, { id: d.id, name: cleanName(d.name), look: cleanLook(d.look), role: d.role === 'parent' ? 'parent' : 'child', p: 0, x: 0, y: 0, z: 0, f: 0, m: 0 });
       UI.toast(`🎉 ${cleanName(d.name)} joined!`); this.changed();
     } else if (d.t === 'leave') {
       const pl = this.players.get(d.id);
@@ -147,6 +168,8 @@ const Net = {
       const text = cleanChat(d.text); if (text) this.gotChat(d.id, cleanName(d.name), text);
     } else if (d.t === 'look') {
       const pl = this.players.get(d.id); if (pl) { pl.look = cleanLook(d.look); Game.remoteLookChanged(d.id); }
+    } else if (d.t === 'x') {
+      if (typeof d.k === 'string') this.gotX(d.id, d.k, d.d);
     } else if (d.t === 'full') {
       UI.toast('😕 That room is full (6 players max)'); this.leave(true);
     }
@@ -195,5 +218,9 @@ const Net = {
     if (id !== this.myId) Sound.tap();
   },
 
-  changed() { if (typeof UI !== 'undefined') UI.netChanged(); },
+  changed() {
+    if (typeof UI !== 'undefined') UI.netChanged();
+    if (typeof Sync !== 'undefined') Sync.roomChanged();
+    if (typeof VoiceChat !== 'undefined') { VoiceChat.refreshButton(); if (this.connected) VoiceChat.hookPeer(); }
+  },
 };

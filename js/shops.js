@@ -169,7 +169,11 @@ const Shops = {
     const s = this.shift;
     if (s.i >= s.total) return this.endShift();
     s.face = pick(CUSTOMER_FACES); s.name = pick(NPC_NAMES);
-    this['cust_' + s.key](band(s.level));
+    s.t0 = performance.now();
+    // difficulty follows her measured level in the related subject (grade-1 content only)
+    const dom = { icecream: 'addition', candy: 'numbers', sneakers: 'numbers', salon: 'comprehension', spa: 'shapes' }[s.key];
+    s.skill = { icecream: 'directions', candy: 'counting', sneakers: 'directions', salon: 'directions', spa: 'patterns' }[s.key];
+    this['cust_' + s.key](band(dom));
   },
   custHeader(text, sayText) {
     const s = this.shift;
@@ -183,7 +187,8 @@ const Shops = {
   served(ok, explain) {
     const s = this.shift;
     if (ok) s.right++;
-    Save.recordAnswer({ icecream: 'Following directions', candy: 'Counting & money', sneakers: 'Reading & ordering', salon: 'Reading & color mixing', spa: 'Patterns & counting' }[s.key], ok);
+    // the order she just filled is a real learning observation
+    Learn.recordWorld(s.skill, ok, { ms: performance.now() - s.t0, difficulty: s.diff });
     ok ? Sound.right() : Sound.wrong();
     UI.open(`<div class="result-big">${ok ? '😍' : '🤔'}</div>
       <p class="affirm">${ok ? pick(['Perfect! Thank you!', 'Just what I wanted!', 'You are the best!', 'Wow, amazing!']) : 'Hmm, not quite what I asked for - but thanks for trying!'}</p>
@@ -215,9 +220,9 @@ const Shops = {
     const r = Math.random();
     if (b === 0) { const n = rnd(1, 2); for (let i = 0; i < n; i++) want[fl[i]] = 1; text = `${Object.keys(want).map(f => `1 ${f}`).join(' and ')} scoop${n > 1 ? 's' : ''}`; }
     else if (b === 1 || r < 0.3) { want[fl[0]] = rnd(1, 2); want[fl[1]] = rnd(1, 2); text = `${want[fl[0]]} ${fl[0]} and ${want[fl[1]]} ${fl[1]}`; }
-    else if (r < 0.55) { const tot = rnd(3, 5), a = rnd(1, tot - 1); want[fl[0]] = a; want[fl[1]] = tot - a; text = `${tot} scoops in all: ${a} ${fl[0]} and the rest ${fl[1]}`; }
-    else if (r < 0.8) { const a = rnd(1, 2); want[fl[0]] = a; want[fl[1]] = a * 2; text = `${a} ${fl[0]} and TWICE as many ${fl[1]}`; }
-    else { const a = rnd(2, 3); want[fl[0]] = a; want[fl[1]] = a - 1; text = `${a} ${fl[0]} and ONE LESS ${fl[1]}`; }
+    else if (r < 0.55) { const tot = rnd(3, 5), a = rnd(1, tot - 1); want[fl[0]] = a; want[fl[1]] = tot - a; text = `${tot} scoops in all: ${a} ${fl[0]} and the rest ${fl[1]}`; this.shift.skill = 'number_bonds'; }
+    else if (r < 0.8) { const a = rnd(1, 2), more = rnd(1, 2); want[fl[0]] = a; want[fl[1]] = a + more; text = `${a} ${fl[0]} and ${more} MORE ${fl[1]} than that`; this.shift.skill = 'addition'; }
+    else { const a = rnd(2, 3); want[fl[0]] = a; want[fl[1]] = a - 1; text = `${a} ${fl[0]} and ONE LESS ${fl[1]}`; this.shift.skill = 'subtraction'; }
     text = `Can I have ${text} in a ${cont}${top === 'none' ? '' : ` with ${top === 'cherry' ? 'a cherry' : 'sprinkles'} on top`}, please?`;
     const st = { scoops: [], cont: 'cone', top: 'none' };
     const render = () => {
@@ -269,14 +274,14 @@ const Shops = {
     const cs = shuffle(CANDIES);
     if (b >= 2 && Math.random() < 0.5) {
       const r = Math.random(); let q, ans;
-      if (r < 0.33) { const p = pick([5, 10, 25]), n = rnd(2, 5); ans = p * n; q = `${cs[0][1]} ${cs[0][0]}s cost ${p}¢ each. How much for ${n}?`; return this.quizCust(q, numberChoices(ans, 5).map(x => x + '¢'), ans + '¢'); }
-      if (r < 0.66) { const bags = rnd(2, 5), each = rnd(2, 6); ans = each; q = `Please share ${bags * each} ${cs[0][1]} equally into ${bags} bags. How many in each bag?`; return this.quizCust(q, numberChoices(ans), String(ans)); }
-      const had = rnd(15, 40), sold = rnd(3, had - 5); ans = had - sold; q = `The shop had ${had} ${cs[0][1]}. We sold ${sold}. How many are left?`; return this.quizCust(q, numberChoices(ans, 5), String(ans));
+      if (r < 0.33) { const p1 = pick([1, 5, 10]), p2 = pick([5, 10, 25]); ans = p1 + p2; q = `A ${cs[0][0].toLowerCase()} ${cs[0][1]} costs ${p1}¢ and a ${cs[1][0].toLowerCase()} ${cs[1][1]} costs ${p2}¢. How much for both?`; this.shift.skill = 'money'; return this.quizCust(q, numberChoices(ans, 5).map(x => x + '¢'), ans + '¢'); }
+      if (r < 0.66) { const want = rnd(8, 15), have = rnd(2, want - 2); ans = want - have; q = `I want ${want} ${cs[0][1]}. I have ${have} in my bag. How many more do I need?`; this.shift.skill = 'addition'; return this.quizCust(q, numberChoices(ans), String(ans)); }
+      const had = rnd(11, 20), sold = rnd(2, had - 3); ans = had - sold; q = `The shop had ${had} ${cs[0][1]}. We sold ${sold}. How many are left?`; this.shift.skill = 'subtraction'; return this.quizCust(q, numberChoices(ans, 4), String(ans));
     }
     const want = {}; let text;
     if (b === 0) { want[cs[0][0]] = rnd(1, 4); want[cs[1][0]] = rnd(1, 3); text = `${want[cs[0][0]]} ${cs[0][1]} ${cs[0][0]}${want[cs[0][0]] > 1 ? 's' : ''} and ${want[cs[1][0]]} ${cs[1][1]} ${cs[1][0]}${want[cs[1][0]] > 1 ? 's' : ''}`; }
-    else if (Math.random() < 0.5) { const tot = rnd(6, 10), a = rnd(2, tot - 2); want[cs[0][0]] = a; want[cs[1][0]] = tot - a; text = `${tot} treats: ${a} ${cs[0][1]} and the rest ${cs[1][1]}`; }
-    else { const a = rnd(1, 4), more = rnd(1, 3); want[cs[0][0]] = a; want[cs[1][0]] = a + more; text = `${a} ${cs[0][1]} and ${more} MORE ${cs[1][1]} than that`; }
+    else if (Math.random() < 0.5) { const tot = rnd(6, 10), a = rnd(2, tot - 2); want[cs[0][0]] = a; want[cs[1][0]] = tot - a; text = `${tot} treats: ${a} ${cs[0][1]} and the rest ${cs[1][1]}`; this.shift.skill = 'number_bonds'; }
+    else { const a = rnd(1, 4), more = rnd(1, 3); want[cs[0][0]] = a; want[cs[1][0]] = a + more; text = `${a} ${cs[0][1]} and ${more} MORE ${cs[1][1]} than that`; this.shift.skill = 'addition'; }
     text = `I would like a bag with ${text}, please!`;
     const bag = [];
     const render = () => {
@@ -343,13 +348,10 @@ const Shops = {
     render(); Voice.speak(text);
   },
   sizeSort(b) {
-    const n = [3, 4, 5, 5, 6][b];
+    this.shift.skill = 'number_order';
+    const n = [3, 4, 5][b];
     const pool = new Set();
-    while (pool.size < n) {
-      if (b <= 1) pool.add(rnd(1, b === 0 ? 10 : 20));
-      else if (b === 2) pool.add(rnd(10, 99));
-      else pool.add(rnd(4, 12) + (Math.random() < 0.5 ? 0.5 : 0));
-    }
+    while (pool.size < n) pool.add(rnd(1, [10, 20, 100][b]));
     const sizes = shuffle([...pool]);
     const sorted = [...sizes].sort((a, c) => a - c);
     const fmt = (v) => Number.isInteger(v) ? String(v) : `${Math.floor(v)}½`;
@@ -468,12 +470,12 @@ const Shops = {
     let want, text, check;                              // want: array of 5 colors (positional) or null for count-based
     const r = Math.random();
     if (b === 0 && r < 0.5) { want = Array(5).fill(A[1]); text = `Please paint all 5 nails ${A[0]}!`; }
-    else if (b <= 1 && r < 0.75) { const a = rnd(1, 4); check = { [A[1]]: a, [B[1]]: 5 - a }; text = `Please paint ${a} nail${a > 1 ? 's' : ''} ${A[0]} and ${5 - a} nail${5 - a > 1 ? 's' : ''} ${B[0]}.`; }
+    else if (b <= 1 && r < 0.75) { const a = rnd(1, 4); check = { [A[1]]: a, [B[1]]: 5 - a }; text = `Please paint ${a} nail${a > 1 ? 's' : ''} ${A[0]} and ${5 - a} nail${5 - a > 1 ? 's' : ''} ${B[0]}.`; this.shift.skill = 'counting'; }
     else if (b <= 1) { want = [A, B, A, B, A].map(c => c[1]); text = `I want a pattern from thumb to pinky: ${A[0]}, ${B[0]}, ${A[0]}, ${B[0]}, ${A[0]}.`; }
     else if (r < 0.3) { want = [A, B, B, B, A].map(c => c[1]); text = `Paint my thumb and pinky ${A[0]}, and the middle three nails ${B[0]}.`; }
     else if (r < 0.55) { want = [A, B, A, B, A].map(c => c[1]); text = `Make an A-B pattern with ${A[0]} and ${B[0]}. Start with ${A[0]} on the thumb!`; }
-    else if (r < 0.8) { const k = rnd(1, 4); check = { [A[1]]: k, [B[1]]: 5 - k }; text = `Paint ${k}/5 of my nails ${A[0]} and the rest ${B[0]}.`; }
-    else { want = [A, B, A, B, A].map(c => c[1]); text = `Paint the odd-numbered nails (1st, 3rd, 5th) ${A[0]} and the even ones ${B[0]}.`; }
+    else if (r < 0.8) { const k = rnd(1, 4); check = { [A[1]]: k, [B[1]]: 5 - k }; text = `Paint ${k} of my 5 nails ${A[0]} and the rest ${B[0]}.`; this.shift.skill = 'number_bonds'; }
+    else { want = [A, A, B, A, A].map(c => c[1]); text = `Paint the MIDDLE nail ${B[0]} and all the others ${A[0]}.`; this.shift.skill = 'directions'; }
     const nails = [null, null, null, null, null];
     let cur = PAINT_COLORS[0][1];
     const render = () => {
